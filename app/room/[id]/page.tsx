@@ -245,25 +245,57 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             )}
             <div ref={chatBottomRef} />
           </div>
-          <form
-            onSubmit={send}
-            style={{
-              display: "flex",
-              gap: 8,
-              paddingTop: 12,
-              borderTop: "1px solid var(--border)",
-            }}
-          >
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Type a message. Start with @ai to ask the AI."
-              style={inp()}
-            />
-            <button type="submit" style={btnPrimary()}>
-              Send
-            </button>
-          </form>
+          {(() => {
+            const aiMention = /^\s*@ai\b/i.test(draft);
+            return (
+              <form
+                onSubmit={send}
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  paddingTop: 12,
+                  borderTop: "1px solid var(--border)",
+                }}
+              >
+                {aiMention && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignSelf: "flex-start",
+                      alignItems: "center",
+                      gap: 6,
+                      background: "var(--orange)",
+                      color: "white",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                    }}
+                  >
+                    <span style={{ width: 6, height: 6, borderRadius: 6, background: "white" }} />
+                    AI will respond
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Type a message. Start with @ai to ask the AI."
+                    style={{
+                      ...inp(),
+                      borderColor: aiMention ? "var(--orange)" : "var(--border)",
+                      boxShadow: aiMention ? "0 0 0 3px rgba(232,74,39,0.15)" : "none",
+                      outline: "none",
+                      transition: "border-color 120ms, box-shadow 120ms",
+                    }}
+                  />
+                  <button type="submit" style={btnPrimary()}>
+                    Send
+                  </button>
+                </div>
+              </form>
+            );
+          })()}
         </section>
 
         <aside
@@ -357,9 +389,38 @@ function MsgView({ m }: { m: Msg }) {
       }}
     >
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>{m.authorName}</div>
-      <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+      <div style={{ whiteSpace: "pre-wrap" }}>{renderWithAiMentions(m.content)}</div>
     </div>
   );
+}
+
+function renderWithAiMentions(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const regex = /@ai\b/gi;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let i = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(
+      <span
+        key={`ai-${i++}`}
+        style={{
+          background: "var(--orange)",
+          color: "white",
+          padding: "1px 6px",
+          borderRadius: 4,
+          fontWeight: 600,
+          fontSize: "0.92em",
+        }}
+      >
+        {match[0]}
+      </span>
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
 }
 
 type BriefData = {

@@ -2,7 +2,7 @@
 
 Run through this after any significant change and before sharing a room link with collaborators. Uses two browser profiles or tabs (A and B) so they carry different cookies.
 
-1. [ ] Create room in A → join as "Ashley". Copy link, open in B, join as "Vishal" → B appears in A's participant list within 1s.
+1. [ ] Create room in A → join as "Ashleyn". Copy link, open in B, join as "Vishal" → B appears in A's participant list within 1s.
 2. [ ] Send "hello" in A → appears in B within 1s.
 3. [ ] Upload a small PDF in A → appears in B's file panel within 1s; checkbox checked in both.
 4. [ ] Send `@ai summarize the file` in B → AI reply appears in both within ~5s.
