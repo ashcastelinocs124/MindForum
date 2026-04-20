@@ -33,6 +33,7 @@ export type Room = {
   name: string;
   createdAt: number;
   createdById: string;
+  systemPrompt: string;
   participants: Map<string, Participant>;
   messages: Message[];
   files: Map<string, RoomFile>;
@@ -43,12 +44,17 @@ const g = globalThis as unknown as { __mindforumRooms?: Map<string, Room> };
 export const rooms: Map<string, Room> = g.__mindforumRooms ?? new Map();
 g.__mindforumRooms = rooms;
 
-export function createRoom(name: string, createdById: string): Room {
+export function createRoom(
+  name: string,
+  createdById: string,
+  systemPrompt = ""
+): Room {
   const room: Room = {
     id: nanoid(10),
     name,
     createdAt: Date.now(),
     createdById,
+    systemPrompt,
     participants: new Map(),
     messages: [],
     files: new Map(),
@@ -66,6 +72,7 @@ export function snapshot(room: Room) {
   return {
     id: room.id,
     name: room.name,
+    systemPrompt: room.systemPrompt,
     participants: Array.from(room.participants.values()),
     messages: room.messages,
     files: Array.from(room.files.values()).map(({ extractedText: _drop, ...rest }) => rest),

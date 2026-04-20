@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 export default function Home() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [joinId, setJoinId] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -17,7 +18,10 @@ export default function Home() {
       const res = await fetch("/api/room", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name || "Untitled Room" }),
+        body: JSON.stringify({
+          name: name || "Untitled Room",
+          systemPrompt: systemPrompt.trim(),
+        }),
       });
       if (!res.ok) throw new Error("create_failed");
       const { id } = await res.json();
@@ -45,16 +49,44 @@ export default function Home() {
 
       <section style={card()}>
         <h2 style={{ marginTop: 0 }}>Create a room</h2>
-        <form onSubmit={onCreate} style={{ display: "flex", gap: 8 }}>
+        <form onSubmit={onCreate} style={{ display: "grid", gap: 10 }}>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Room name (e.g., Fall 2026 Grant Brainstorm)"
             style={input()}
           />
-          <button type="submit" disabled={loading} style={btnPrimary()}>
-            {loading ? "Creating…" : "Create"}
-          </button>
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                color: "var(--muted)",
+                marginBottom: 4,
+              }}
+            >
+              AI guidance (optional) — how should the AI behave in this room?
+            </label>
+            <textarea
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="e.g., You are helping four faculty shape a grant proposal. Ask probing questions before suggesting answers. Prefer plain language over jargon."
+              rows={4}
+              maxLength={4000}
+              style={{
+                ...input(),
+                width: "100%",
+                display: "block",
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button type="submit" disabled={loading} style={btnPrimary()}>
+              {loading ? "Creating…" : "Create"}
+            </button>
+          </div>
         </form>
       </section>
 

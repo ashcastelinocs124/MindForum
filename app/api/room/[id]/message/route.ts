@@ -37,7 +37,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         const selectedFiles = Array.from(room.selectedFileIds)
           .map((fid) => room.files.get(fid))
           .filter((f): f is NonNullable<typeof f> => !!f);
-        const reply = await chatReply(room.messages, selectedFiles);
+        const reply = await chatReply(room.messages, selectedFiles, room.systemPrompt);
         const aiMsg: Message = {
           id: nanoid(10),
           roomId: id,

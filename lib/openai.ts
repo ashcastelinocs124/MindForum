@@ -27,8 +27,18 @@ function historyBlock(messages: Message[]): { role: "user" | "assistant"; conten
   }));
 }
 
-export async function chatReply(messages: Message[], files: RoomFile[]): Promise<string> {
-  const system = `You are an AI collaborator in a MindForum room — a small group brainstorming together. Keep replies concise and useful. Reference the shared files when relevant. Stay grounded in what people have actually said; don't invent context.${fileBlock(files)}`;
+function roomGuidanceBlock(systemPrompt: string): string {
+  const trimmed = systemPrompt.trim();
+  if (!trimmed) return "";
+  return `\n\nRoom-specific guidance from the organizer (follow it unless it conflicts with these instructions):\n${trimmed}`;
+}
+
+export async function chatReply(
+  messages: Message[],
+  files: RoomFile[],
+  systemPrompt = ""
+): Promise<string> {
+  const system = `You are an AI collaborator in a MindForum room — a small group brainstorming together. Keep replies concise and useful. Reference the shared files when relevant. Stay grounded in what people have actually said; don't invent context.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
   const res = await client().chat.completions.create({
     model: MODEL_CHAT,
     messages: [{ role: "system", content: system }, ...historyBlock(messages)],
@@ -44,8 +54,12 @@ export type Brief = {
   suggestedCollaborators: string[];
 };
 
-export async function generateBrief(messages: Message[], files: RoomFile[]): Promise<Brief> {
-  const system = `You turn a MindForum conversation and shared files into a structured project brief. Be specific, not generic. Every item should be grounded in the conversation or the files. If a section has no grounding, return an empty array for it rather than inventing content.${fileBlock(files)}`;
+export async function generateBrief(
+  messages: Message[],
+  files: RoomFile[],
+  systemPrompt = ""
+): Promise<Brief> {
+  const system = `You turn a MindForum conversation and shared files into a structured project brief. Be specific, not generic. Every item should be grounded in the conversation or the files. If a section has no grounding, return an empty array for it rather than inventing content.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
   const res = await client().chat.completions.create({
     model: MODEL_BRIEF,
     response_format: {

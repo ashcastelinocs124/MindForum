@@ -23,6 +23,7 @@ type Msg = {
 type Snapshot = {
   id: string;
   name: string;
+  systemPrompt?: string;
   participants: Participant[];
   messages: Msg[];
   files: PublicFile[];
@@ -36,29 +37,55 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [joinError, setJoinError] = useState("");
+  const [joining, setJoining] = useState(false);
   const [state, setState] = useState<Snapshot | null>(null);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [briefPending, setBriefPending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
+  // Prefill name + email from previous session so returning users don't retype.
+  useEffect(() => {
+    try {
+      const savedName = localStorage.getItem("mindforum_name");
+      const savedEmail = localStorage.getItem("mindforum_email");
+      if (savedName) setName(savedName);
+      if (savedEmail) setEmail(savedEmail);
+    } catch {}
+  }, []);
+
   async function join(e: React.FormEvent) {
     e.preventDefault();
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName || !trimmedEmail) {
+      setJoinError("Name and email are both required.");
+      return;
+    }
     setJoinError("");
-    const res = await fetch(`/api/room/${id}/join`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, email }),
-    });
-    if (res.status === 404) {
-      setJoinError("Room not found.");
-      return;
+    setJoining(true);
+    try {
+      const res = await fetch(`/api/room/${id}/join`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: trimmedName, email: trimmedEmail }),
+      });
+      if (res.status === 404) {
+        setJoinError("Room not found.");
+        return;
+      }
+      if (!res.ok) {
+        setJoinError("Could not join.");
+        return;
+      }
+      try {
+        localStorage.setItem("mindforum_name", trimmedName);
+        localStorage.setItem("mindforum_email", trimmedEmail);
+      } catch {}
+      setJoined(true);
+    } finally {
+      setJoining(false);
     }
-    if (!res.ok) {
-      setJoinError("Could not join.");
-      return;
-    }
-    setJoined(true);
   }
 
   useEffect(() => {
@@ -163,10 +190,14 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             onChange={(e) => setEmail(e.target.value)}
             style={inp()}
           />
-          <button type="submit" style={btnPrimary()}>
-            Join
+          <button
+            type="submit"
+            disabled={joining || !name.trim() || !email.trim()}
+            style={btnPrimary()}
+          >
+            {joining ? "Joining…" : "Join"}
           </button>
-          {joinError && <p style={{ color: "crimson" }}>{joinError}</p>}
+          {joinError && <p style={{ color: "crimson", margin: 0 }}>{joinError}</p>}
         </form>
       </main>
     );
@@ -230,6 +261,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           style={{ ...col(), minHeight: 0, display: "grid", gridTemplateRows: "1fr auto" }}
         >
           <div style={{ overflowY: "auto", paddingRight: 8 }}>
+            {state.systemPrompt && <GuidanceCard text={state.systemPrompt} />}
             {state.messages.length === 0 && (
               <p style={{ color: "var(--muted)" }}>
                 Mention <code>@ai</code> to ask a question, or click <b>Generate project brief</b> when the room has enough context.
@@ -371,6 +403,45 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
         </aside>
       </div>
     </main>
+  );
+}
+
+function GuidanceCard({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const preview = text.length > 140 ? text.slice(0, 140) + "…" : text;
+  return (
+    <div
+      style={{
+        padding: "10px 12px",
+        margin: "0 0 12px",
+        background: "rgba(19,41,75,0.04)",
+        border: "1px dashed var(--border)",
+        borderRadius: 8,
+        fontSize: 13,
+      }}
+    >
+      <div style={{ color: "var(--muted)", fontWeight: 600, marginBottom: 4 }}>
+        AI guidance for this room
+      </div>
+      <div style={{ whiteSpace: "pre-wrap" }}>{open ? text : preview}</div>
+      {text.length > 140 && (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            marginTop: 4,
+            background: "transparent",
+            border: "none",
+            color: "var(--navy)",
+            fontWeight: 600,
+            padding: 0,
+            fontSize: 12,
+          }}
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
   );
 }
 
