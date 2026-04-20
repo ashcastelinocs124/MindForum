@@ -397,9 +397,21 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
               }}
             />
           </label>
-          <button onClick={generateBrief} disabled={briefPending} style={heroBtn()}>
-            {briefPending ? "Generating…" : "✨ Generate project brief"}
-          </button>
+          <div>
+            <button onClick={generateBrief} disabled={briefPending} style={{ ...heroBtn(), width: "100%" }}>
+              {briefPending ? "Generating…" : "✨ Generate project brief"}
+            </button>
+            <p
+              style={{
+                fontSize: 12,
+                color: "var(--muted)",
+                lineHeight: 1.4,
+                margin: "8px 0 0",
+              }}
+            >
+              Turns the conversation and any selected files into a structured brief — themes, outline, risks, next steps, suggested collaborators. Posts to the thread for everyone. Takes ~10–20s.
+            </p>
+          </div>
         </aside>
       </div>
     </main>
