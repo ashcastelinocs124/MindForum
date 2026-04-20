@@ -1,0 +1,39 @@
+import { NextRequest } from "next/server";
+import { getRoom, snapshot } from "@/lib/store";
+import { subscribe, unsubscribe } from "@/lib/sse";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  const room = getRoom(id);
+  if (!room) return new Response("Not found", { status: 404 });
+
+  const stream = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = stream.writable.getWriter();
+  const encoder = new TextEncoder();
+
+  writer.write(encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot(room))}\n\n`));
+
+  subscribe(id, writer);
+
+  const hb = setInterval(() => {
+    writer.write(encoder.encode(`: hb\n\n`)).catch(() => clearInterval(hb));
+  }, 15000);
+
+  const onClose = () => {
+    clearInterval(hb);
+    unsubscribe(id, writer);
+    writer.close().catch(() => {});
+  };
+  req.signal?.addEventListener("abort", onClose);
+
+  return new Response(stream.readable, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
+  });
+}

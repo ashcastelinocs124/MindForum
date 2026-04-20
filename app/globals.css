@@ -1,0 +1,19 @@
+:root {
+  --navy: #13294B;
+  --orange: #E84A27;
+  --bg: #F5F5F5;
+  --card: #FFFFFF;
+  --border: #E5E7EB;
+  --text: #111827;
+  --muted: #6B7280;
+}
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Source+Sans+3:wght@400;500;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Source Sans 3', system-ui, sans-serif; }
+h1, h2, h3 { font-family: Montserrat, system-ui, sans-serif; color: var(--navy); }
+button { cursor: pointer; font-family: inherit; }
+button:disabled { cursor: not-allowed; opacity: 0.6; }
+input, textarea { font-family: inherit; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(19,41,75,0.06); padding: 1px 4px; border-radius: 4px; }
