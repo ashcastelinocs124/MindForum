@@ -8,7 +8,6 @@ export const runtime = "nodejs";
 const MAX_SYSTEM_PROMPT_CHARS = 4000;
 
 export async function POST(req: NextRequest) {
-  // 5 room creations per IP per 10 minutes — generous for legit use, tight on abuse.
   const rate = checkRate("create-room", clientIp(req), 5, 10 * 60 * 1000);
   if (!rate.allowed) return rateLimited(rate.retryAfterSeconds);
 
@@ -22,6 +21,12 @@ export async function POST(req: NextRequest) {
       ? body.systemPrompt.trim().slice(0, MAX_SYSTEM_PROMPT_CHARS)
       : "";
   const createdById = nanoid(10);
-  const room = createRoom(name, createdById, systemPrompt);
-  return NextResponse.json({ id: room.id, name: room.name });
+
+  try {
+    const room = await createRoom(name, createdById, systemPrompt);
+    return NextResponse.json({ id: room.id, name: room.name });
+  } catch (err) {
+    console.error("createRoom failed:", err);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
 }

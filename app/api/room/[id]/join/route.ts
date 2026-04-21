@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getRoom } from "@/lib/store";
+import { roomExists, upsertParticipant, getParticipant } from "@/lib/store";
 import { broadcast } from "@/lib/sse";
 import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
-import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  // 10 join attempts per IP per minute — legit retries are fine; automated scraping gets blocked.
   const rate = checkRate("join", clientIp(req), 10, 60 * 1000);
   if (!rate.allowed) return rateLimited(rate.retryAfterSeconds);
 
   const { id } = await ctx.params;
-  const room = getRoom(id);
-  if (!room) return NextResponse.json({ error: "room_not_found" }, { status: 404 });
+  if (!(await roomExists(id))) {
+    return NextResponse.json({ error: "room_not_found" }, { status: 404 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : "";
@@ -23,17 +22,33 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
 
   const cookieName = `mindforum_pid_${id}`;
-  const existing = req.cookies.get(cookieName)?.value;
-  if (existing && room.participants.has(existing)) {
-    return NextResponse.json({ participantId: existing });
+  const existingPid = req.cookies.get(cookieName)?.value;
+  if (existingPid) {
+    const existing = await getParticipant(id, existingPid);
+    if (existing) {
+      return NextResponse.json({ participantId: existing.id });
+    }
   }
 
-  const participantId = nanoid(10);
-  const participant = { id: participantId, name, email, joinedAt: Date.now() };
-  room.participants.set(participantId, participant);
+  let participant;
+  try {
+    participant = await upsertParticipant(id, name, email);
+  } catch (err) {
+    console.error("upsertParticipant failed:", err);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
+  if (!participant) {
+    return NextResponse.json({ error: "room_not_found" }, { status: 404 });
+  }
+
+  // DB write is durable — safe to broadcast.
   broadcast(id, "participant_joined", participant);
 
-  const res = NextResponse.json({ participantId });
-  res.cookies.set(cookieName, participantId, { httpOnly: true, sameSite: "lax", path: "/" });
+  const res = NextResponse.json({ participantId: participant.id });
+  res.cookies.set(cookieName, participant.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
   return res;
 }

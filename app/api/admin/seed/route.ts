@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
-import { rooms, type Room, type RoomFile } from "@/lib/store";
+import { adminAddFile, adminUpsertRoom, type RoomFile } from "@/lib/store";
 import { parseFile } from "@/lib/parse";
 
 export const runtime = "nodejs";
 
 type SeedFile = {
-  path: string;    // relative to process.cwd()
+  path: string;
   name?: string;
   selected?: boolean;
 };
@@ -18,22 +18,24 @@ type SeedBody = {
   name: string;
   systemPrompt?: string;
   files?: SeedFile[];
-  replace?: boolean;       // if true, overwrite an existing room with this id
+  /**
+   * "metadata" (default): upsert rooms row + replace files. Keeps messages +
+   * participants. Use this to refresh canonical content without losing chat.
+   * "full": wipe the room entirely (cascades to participants/messages/files),
+   * then re-create. Use this for intentional resets.
+   */
+  replaceMode?: "metadata" | "full";
 };
 
 const MAX_TEXT_CHARS = 200_000;
 
 /**
- * Admin-only idempotent room seeder. Used to re-create a room at a specific
- * (previously-used) id after a process restart, so old invite links survive.
- *
+ * Admin-only room seeder. Idempotent.
  * Auth: requires x-admin-token header matching ADMIN_TOKEN env var.
  */
 export async function POST(req: NextRequest) {
   const adminToken = process.env.ADMIN_TOKEN;
-  if (!adminToken) {
-    return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
-  }
+  if (!adminToken) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
   const supplied = req.headers.get("x-admin-token");
   if (supplied !== adminToken) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -50,21 +52,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "id_and_name_required" }, { status: 400 });
   }
 
-  if (rooms.has(body.id) && !body.replace) {
-    return NextResponse.json({ error: "already_exists", id: body.id }, { status: 409 });
-  }
+  const replaceMode: "metadata" | "full" =
+    body.replaceMode === "full" ? "full" : "metadata";
 
-  const room: Room = {
-    id: body.id,
-    name: body.name.slice(0, 100),
-    createdAt: Date.now(),
-    createdById: "seed",
-    systemPrompt: (body.systemPrompt ?? "").slice(0, 4000),
-    participants: new Map(),
-    messages: [],
-    files: new Map(),
-    selectedFileIds: new Set(),
-  };
+  try {
+    await adminUpsertRoom({
+      id: body.id,
+      name: body.name.slice(0, 100),
+      systemPrompt: (body.systemPrompt ?? "").slice(0, 4000),
+      replaceMode,
+    });
+  } catch (err) {
+    console.error("adminUpsertRoom failed:", err);
+    return NextResponse.json({ error: "db_error" }, { status: 500 });
+  }
 
   const loaded: { name: string; path: string; bytes: number }[] = [];
   const failed: { path: string; error: string }[] = [];
@@ -72,7 +73,6 @@ export async function POST(req: NextRequest) {
   for (const sf of body.files ?? []) {
     try {
       const abs = path.resolve(process.cwd(), sf.path);
-      // Stay inside the app directory — no escaping via ../
       if (!abs.startsWith(process.cwd() + path.sep) && abs !== process.cwd()) {
         failed.push({ path: sf.path, error: "path_escape" });
         continue;
@@ -80,31 +80,34 @@ export async function POST(req: NextRequest) {
       const buf = fs.readFileSync(abs);
       const fileName = sf.name ?? path.basename(sf.path);
       const parsed = await parseFile(fileName, "", buf);
-      const pathHash = crypto.createHash("sha1").update(sf.path).digest("base64url").slice(0, 12);
+      const pathHash = crypto
+        .createHash("sha1")
+        .update(sf.path)
+        .digest("base64url")
+        .slice(0, 12);
       const rf: RoomFile = {
         id: `seed-${pathHash}`,
-        roomId: room.id,
+        roomId: body.id,
         name: fileName,
         mime: parsed.mime,
         sizeBytes: buf.length,
         uploadedById: "seed",
         uploadedAt: Date.now(),
         extractedText: parsed.text.slice(0, MAX_TEXT_CHARS),
+        selected: sf.selected !== false,
       };
-      room.files.set(rf.id, rf);
-      if (sf.selected !== false) room.selectedFileIds.add(rf.id);
+      await adminAddFile(rf);
       loaded.push({ name: fileName, path: sf.path, bytes: buf.length });
     } catch (err) {
       failed.push({ path: sf.path, error: (err as Error).message });
     }
   }
 
-  rooms.set(room.id, room);
-
   return NextResponse.json({
     ok: true,
-    id: room.id,
-    name: room.name,
+    id: body.id,
+    name: body.name,
+    replaceMode,
     files: loaded,
     failed,
   });

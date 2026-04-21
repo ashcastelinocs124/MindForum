@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const room = getRoom(id);
+  const room = await getRoom(id);
   if (!room) return new Response("Not found", { status: 404 });
 
   const stream = new TransformStream<Uint8Array, Uint8Array>();
