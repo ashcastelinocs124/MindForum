@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { rooms, type Room, type RoomFile } from "@/lib/store";
 import { parseFile } from "@/lib/parse";
 
@@ -79,8 +80,9 @@ export async function POST(req: NextRequest) {
       const buf = fs.readFileSync(abs);
       const fileName = sf.name ?? path.basename(sf.path);
       const parsed = await parseFile(fileName, "", buf);
+      const pathHash = crypto.createHash("sha1").update(sf.path).digest("base64url").slice(0, 12);
       const rf: RoomFile = {
-        id: `seed-${Buffer.from(sf.path).toString("base64url").slice(0, 12)}`,
+        id: `seed-${pathHash}`,
         roomId: room.id,
         name: fileName,
         mime: parsed.mime,
