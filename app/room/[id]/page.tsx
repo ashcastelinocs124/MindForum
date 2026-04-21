@@ -103,6 +103,36 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
       setState((s) => (s ? { ...s, messages: [...s.messages, m] } : s));
       if (m.kind === "brief") setBriefPending(false);
     });
+    es.addEventListener("message_token", (ev) => {
+      const { id: mid, delta } = JSON.parse((ev as MessageEvent).data) as {
+        id: string;
+        delta: string;
+      };
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.id === mid ? { ...m, content: m.content + delta } : m
+              ),
+            }
+          : s
+      );
+    });
+    es.addEventListener("message_updated", (ev) => {
+      const { id: mid, content } = JSON.parse((ev as MessageEvent).data) as {
+        id: string;
+        content: string;
+      };
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              messages: s.messages.map((m) => (m.id === mid ? { ...m, content } : m)),
+            }
+          : s
+      );
+    });
     es.addEventListener("file_added", (ev) => {
       const f: PublicFile = JSON.parse((ev as MessageEvent).data);
       setState((s) => (s ? { ...s, files: upsertById(s.files, f) } : s));
@@ -117,9 +147,11 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
     return () => es.close();
   }, [id, joined]);
 
+  // Autoscroll on new messages and while the last message is streaming.
+  const lastMsgLen = state?.messages[state.messages.length - 1]?.content?.length ?? 0;
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state?.messages.length]);
+    chatBottomRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [state?.messages.length, lastMsgLen]);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -472,7 +504,13 @@ function MsgView({ m }: { m: Msg }) {
       }}
     >
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>{m.authorName}</div>
-      <div style={{ whiteSpace: "pre-wrap" }}>{renderWithAiMentions(m.content)}</div>
+      <div style={{ whiteSpace: "pre-wrap" }}>
+        {m.content ? (
+          renderWithAiMentions(m.content)
+        ) : isAi ? (
+          <span style={{ color: "var(--muted)", fontStyle: "italic" }}>thinking…</span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -514,6 +552,40 @@ type BriefData = {
   suggestedCollaborators?: string[];
 };
 
+function briefToMarkdown(brief: BriefData, createdAt: number): string {
+  const iso = new Date(createdAt).toISOString().slice(0, 19).replace("T", " ");
+  const lines: string[] = [`# Project Brief`, ``, `_Generated ${iso} UTC_`, ``];
+  if (brief.themes?.length) {
+    lines.push(`## Themes`, ``);
+    for (const t of brief.themes) lines.push(`- ${t}`);
+    lines.push(``);
+  }
+  if (brief.outline?.length) {
+    lines.push(`## Outline`, ``);
+    for (const o of brief.outline) {
+      lines.push(`### ${o.section}`, ``);
+      for (const p of o.points ?? []) lines.push(`- ${p}`);
+      lines.push(``);
+    }
+  }
+  if (brief.risks?.length) {
+    lines.push(`## Risks`, ``);
+    for (const r of brief.risks) lines.push(`- ${r}`);
+    lines.push(``);
+  }
+  if (brief.nextSteps?.length) {
+    lines.push(`## Next steps`, ``);
+    for (const n of brief.nextSteps) lines.push(`- ${n}`);
+    lines.push(``);
+  }
+  if (brief.suggestedCollaborators?.length) {
+    lines.push(`## Suggested collaborators`, ``);
+    for (const c of brief.suggestedCollaborators) lines.push(`- ${c}`);
+    lines.push(``);
+  }
+  return lines.join("\n");
+}
+
 function BriefView({ m }: { m: Msg }) {
   let brief: BriefData | null = null;
   try {
@@ -521,6 +593,20 @@ function BriefView({ m }: { m: Msg }) {
   } catch {
     return <MsgView m={{ ...m, kind: "chat", content: m.content }} />;
   }
+  const download = () => {
+    if (!brief) return;
+    const md = briefToMarkdown(brief, m.createdAt);
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date(m.createdAt).toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `mindforum-brief-${stamp}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
   return (
     <div
       style={{
@@ -534,14 +620,37 @@ function BriefView({ m }: { m: Msg }) {
     >
       <div
         style={{
-          fontFamily: "Montserrat, sans-serif",
-          color: "var(--navy)",
-          fontWeight: 700,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
           marginBottom: 8,
-          fontSize: 18,
         }}
       >
-        Project Brief
+        <div
+          style={{
+            fontFamily: "Montserrat, sans-serif",
+            color: "var(--navy)",
+            fontWeight: 700,
+            fontSize: 18,
+          }}
+        >
+          Project Brief
+        </div>
+        <button
+          type="button"
+          onClick={download}
+          style={{
+            background: "transparent",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            padding: "4px 10px",
+            fontSize: 12,
+            color: "var(--navy)",
+            fontWeight: 600,
+          }}
+        >
+          ↓ Download .md
+        </button>
       </div>
       <Section title="Themes" items={brief?.themes} />
       {brief?.outline && brief.outline.length > 0 && (

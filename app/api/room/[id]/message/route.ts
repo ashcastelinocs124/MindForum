@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoom, type Message } from "@/lib/store";
 import { broadcast } from "@/lib/sse";
-import { chatReply } from "@/lib/openai";
+import { chatReplyStream } from "@/lib/openai";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
@@ -32,36 +32,42 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   broadcast(id, "message_added", msg);
 
   if (/^@ai\b/i.test(content)) {
+    // Snapshot history before we push the empty AI stub so the model
+    // doesn't see an empty "AI:" turn.
+    const historyForAI = [...room.messages];
+
+    const aiMsg: Message = {
+      id: nanoid(10),
+      roomId: id,
+      authorId: "ai",
+      authorName: "AI",
+      content: "",
+      createdAt: Date.now(),
+      kind: "chat",
+    };
+    room.messages.push(aiMsg);
+    broadcast(id, "message_added", aiMsg);
+
     void (async () => {
+      let got = false;
       try {
         const selectedFiles = Array.from(room.selectedFileIds)
           .map((fid) => room.files.get(fid))
           .filter((f): f is NonNullable<typeof f> => !!f);
-        const reply = await chatReply(room.messages, selectedFiles, room.systemPrompt);
-        const aiMsg: Message = {
-          id: nanoid(10),
-          roomId: id,
-          authorId: "ai",
-          authorName: "AI",
-          content: reply || "(no reply)",
-          createdAt: Date.now(),
-          kind: "chat",
-        };
-        room.messages.push(aiMsg);
-        broadcast(id, "message_added", aiMsg);
+        for await (const delta of chatReplyStream(historyForAI, selectedFiles, room.systemPrompt)) {
+          got = true;
+          aiMsg.content += delta;
+          broadcast(id, "message_token", { id: aiMsg.id, delta });
+        }
+        if (!got) {
+          aiMsg.content = "(no reply)";
+          broadcast(id, "message_updated", { id: aiMsg.id, content: aiMsg.content });
+        }
       } catch (err) {
-        console.error("chatReply failed:", err);
-        const errMsg: Message = {
-          id: nanoid(10),
-          roomId: id,
-          authorId: "ai",
-          authorName: "AI",
-          content: "⚠️ I couldn't generate a response. Try again.",
-          createdAt: Date.now(),
-          kind: "chat",
-        };
-        room.messages.push(errMsg);
-        broadcast(id, "message_added", errMsg);
+        console.error("chatReplyStream failed:", err);
+        aiMsg.content = (aiMsg.content || "") +
+          (got ? "\n\n⚠️ (response cut off — try again)" : "⚠️ I couldn't generate a response. Try again.");
+        broadcast(id, "message_updated", { id: aiMsg.id, content: aiMsg.content });
       }
     })();
   }

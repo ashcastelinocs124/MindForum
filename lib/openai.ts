@@ -33,17 +33,42 @@ function roomGuidanceBlock(systemPrompt: string): string {
   return `\n\nRoom-specific guidance from the organizer (follow it unless it conflicts with these instructions):\n${trimmed}`;
 }
 
+function chatSystemPrompt(files: RoomFile[], systemPrompt: string): string {
+  return `You are an AI collaborator in a MindForum room — a small group brainstorming together. Keep replies concise and useful. Reference the shared files when relevant. Stay grounded in what people have actually said; don't invent context.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
+}
+
 export async function chatReply(
   messages: Message[],
   files: RoomFile[],
   systemPrompt = ""
 ): Promise<string> {
-  const system = `You are an AI collaborator in a MindForum room — a small group brainstorming together. Keep replies concise and useful. Reference the shared files when relevant. Stay grounded in what people have actually said; don't invent context.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
   const res = await client().chat.completions.create({
     model: MODEL_CHAT,
-    messages: [{ role: "system", content: system }, ...historyBlock(messages)],
+    messages: [
+      { role: "system", content: chatSystemPrompt(files, systemPrompt) },
+      ...historyBlock(messages),
+    ],
   });
   return res.choices[0]?.message?.content?.trim() ?? "";
+}
+
+export async function* chatReplyStream(
+  messages: Message[],
+  files: RoomFile[],
+  systemPrompt = ""
+): AsyncGenerator<string, void, void> {
+  const stream = await client().chat.completions.create({
+    model: MODEL_CHAT,
+    stream: true,
+    messages: [
+      { role: "system", content: chatSystemPrompt(files, systemPrompt) },
+      ...historyBlock(messages),
+    ],
+  });
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta?.content;
+    if (delta) yield delta;
+  }
 }
 
 export type Brief = {
