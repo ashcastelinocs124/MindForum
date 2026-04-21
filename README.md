@@ -121,13 +121,17 @@ This is intentional for an MVP. Participants, messages, and uploaded files all l
 
 ## Abuse notes
 
-The app has no built-in rate limiting. Anyone with a room link can post messages and trigger `@ai` calls against your OpenAI key. Before exposing it broadly, consider adding:
+The app ships with a minimal in-memory per-IP rate limiter (see `lib/ratelimit.ts`). Defaults:
 
-- Per-IP rate limit at the nginx or app layer (e.g., `limit_req_zone`).
-- A simple shared-secret env var gating room creation.
-- Per-room message cap.
+| Endpoint | Limit |
+|----------|-------|
+| `POST /api/room` (create) | 5 per IP / 10 min |
+| `POST /api/room/[id]/join` | 10 per IP / min |
+| `POST /api/room/[id]/message` | 60 per IP / min |
+| `POST /api/room/[id]/upload` | 10 per IP / 10 min |
+| `POST /api/room/[id]/brief` | 3 per IP / 5 min |
 
-For a private link shared with a handful of trusted collaborators, those aren't strictly necessary.
+Limits are tuned for legitimate small-group use; an attacker trying to burn your OpenAI key via `@ai` spam will hit the wall quickly. For higher-exposure deployments, consider adding nginx-level `limit_req_zone` as a second layer and/or a shared-secret env var gating room creation.
 
 ## How the pieces fit
 

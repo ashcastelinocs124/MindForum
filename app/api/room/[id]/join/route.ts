@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRoom } from "@/lib/store";
 import { broadcast } from "@/lib/sse";
+import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  // 10 join attempts per IP per minute — legit retries are fine; automated scraping gets blocked.
+  const rate = checkRate("join", clientIp(req), 10, 60 * 1000);
+  if (!rate.allowed) return rateLimited(rate.retryAfterSeconds);
+
   const { id } = await ctx.params;
   const room = getRoom(id);
   if (!room) return NextResponse.json({ error: "room_not_found" }, { status: 404 });

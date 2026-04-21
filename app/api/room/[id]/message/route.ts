@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRoom, type Message } from "@/lib/store";
 import { broadcast } from "@/lib/sse";
 import { chatReplyStream } from "@/lib/openai";
+import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  // 60 messages per IP per minute — legit chat can burst, abuse hits the wall.
+  const rate = checkRate("message", clientIp(req), 60, 60 * 1000);
+  if (!rate.allowed) return rateLimited(rate.retryAfterSeconds);
+
   const { id } = await ctx.params;
   const room = getRoom(id);
   if (!room) return NextResponse.json({ error: "room_not_found" }, { status: 404 });

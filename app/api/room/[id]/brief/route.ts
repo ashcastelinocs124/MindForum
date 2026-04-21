@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRoom, type Message } from "@/lib/store";
 import { broadcast } from "@/lib/sse";
 import { generateBrief } from "@/lib/openai";
+import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  // Brief generation is the most expensive call (~$0.05–0.20). 3 per IP per 5 minutes.
+  const rate = checkRate("brief", clientIp(req), 3, 5 * 60 * 1000);
+  if (!rate.allowed) return rateLimited(rate.retryAfterSeconds);
+
   const { id } = await ctx.params;
   const room = getRoom(id);
   if (!room) return NextResponse.json({ error: "room_not_found" }, { status: 404 });

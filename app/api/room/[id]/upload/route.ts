@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRoom, type RoomFile } from "@/lib/store";
 import { broadcast } from "@/lib/sse";
 import { parseFile } from "@/lib/parse";
+import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
@@ -10,6 +11,10 @@ const MAX_BYTES = 10 * 1024 * 1024;    // 10MB
 const MAX_TEXT_CHARS = 200_000;
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  // 10 uploads per IP per 10 minutes — parsing is CPU-heavy.
+  const rate = checkRate("upload", clientIp(req), 10, 10 * 60 * 1000);
+  if (!rate.allowed) return rateLimited(rate.retryAfterSeconds);
+
   const { id } = await ctx.params;
   const room = getRoom(id);
   if (!room) return NextResponse.json({ error: "room_not_found" }, { status: 404 });
