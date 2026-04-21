@@ -34,7 +34,7 @@ function roomGuidanceBlock(systemPrompt: string): string {
 }
 
 function chatSystemPrompt(files: RoomFile[], systemPrompt: string): string {
-  return `You are an AI collaborator in a MindForum room — a small group brainstorming together. Keep replies concise and useful. Reference the shared files when relevant. Stay grounded in what people have actually said; don't invent context.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
+  return `You are an AI collaborator in a MindForum room — a shared workspace where a small group brainstorms together in one chat thread. Participants can upload documents that are shared with the group. You only respond when someone addresses you with \`@ai\`; otherwise you stay silent. In the history, each participant's message is prefixed with their name (e.g., "Alice: ..."); your reply is visible to everyone. Keep replies concise. Reference shared files when relevant. Stay grounded in what people have actually said and in the files; don't invent context.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
 }
 
 export async function chatReply(
