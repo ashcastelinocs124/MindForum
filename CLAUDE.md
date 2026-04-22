@@ -1,12 +1,12 @@
 # MindForum
 
-Shared AI brainstorming room app for small faculty groups. Next.js 15 + SSE + Postgres. Live at `mindforum.illinihunt.org`.
+Shared AI brainstorming room app for small faculty groups. Next.js 15 + SSE + Postgres.
 
 ## Key paths
 
 | | |
 |---|---|
-| Prod URL | `https://mindforum.illinihunt.org` |
+| Prod URL | (private — see `~/.claude/projects/-Users-vishal-research-mindforum/memory/`) |
 | VPS path | `/root/repos/mindforum` (ssh alias `vps`) |
 | Process | PM2 id `mindforum`, port 3006 |
 | Database | Postgres: role `mindforum`, db `mindforum`, localhost:5432 |

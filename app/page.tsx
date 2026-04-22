@@ -1,6 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+const ADMIN_TOKEN_KEY = "mindforum_admin_token";
 
 export default function Home() {
   const router = useRouter();
@@ -9,25 +11,53 @@ export default function Home() {
   const [joinId, setJoinId] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+
+  // Pick up ?token=... on mount, cache in localStorage, strip from URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("token");
+    if (fromUrl) {
+      window.localStorage.setItem(ADMIN_TOKEN_KEY, fromUrl);
+      setAdminToken(fromUrl);
+      params.delete("token");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+      return;
+    }
+    setAdminToken(window.localStorage.getItem(ADMIN_TOKEN_KEY));
+  }, []);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setErr("");
     try {
+      const headers: Record<string, string> = { "content-type": "application/json" };
+      if (adminToken) headers["x-admin-token"] = adminToken;
       const res = await fetch("/api/room", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify({
           name: name || "Untitled Room",
           systemPrompt: systemPrompt.trim(),
         }),
       });
+      if (res.status === 401) {
+        window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+        setAdminToken(null);
+        throw new Error("unauthorized");
+      }
       if (!res.ok) throw new Error("create_failed");
       const { id } = await res.json();
       router.push(`/room/${id}`);
-    } catch {
-      setErr("Could not create room.");
+    } catch (e) {
+      setErr(
+        e instanceof Error && e.message === "unauthorized"
+          ? "Room creation is restricted. Ask the admin for an access link."
+          : "Could not create room."
+      );
     } finally {
       setLoading(false);
     }
