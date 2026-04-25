@@ -103,7 +103,6 @@ Everything is on GitHub at [gies-ai-experiments/MindForum](https://github.com/gi
 
 - The app code (~1,000 lines, Next.js 15 + TypeScript + SSE)
 - Ash's [design doc](https://github.com/gies-ai-experiments/MindForum/blob/main/docs/plans/2026-04-20-seminar-room-design.md) and [task plan](https://github.com/gies-ai-experiments/MindForum/blob/main/docs/plans/2026-04-20-seminar-room.md) that started it
-- A [`rooms/` folder](https://github.com/gies-ai-experiments/MindForum/tree/main/rooms/2026-04-20-ai-ethics-exercise-design) with the configuration for Willie's specific brainstorm: facilitator prompt, draft student-facing prompt, source transcript, setup README
 - A [handoff issue](https://github.com/gies-ai-experiments/MindForum/issues/1) I opened for Ash documenting what I changed versus his spec
 
 If you want to run your own: `git clone`, add an OpenAI key to `.env.local`, `npm install && npm run dev`. Deployment recipe (systemd + nginx with SSE-safe settings) is in the README.

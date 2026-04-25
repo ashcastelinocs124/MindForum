@@ -5,3 +5,4 @@ node_modules
 /tmp-uploads
 tsconfig.tsbuildinfo
 rooms/
+.DS_Store

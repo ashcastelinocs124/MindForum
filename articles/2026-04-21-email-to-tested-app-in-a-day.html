@@ -1,0 +1,271 @@
+<h1 id="email-to-tested-app-in-under-ten-hours">Email to Tested App in
+Under Ten Hours</h1>
+<p><em>A faculty brainstorm tool, three collaborators, and the new shape
+of custom software.</em></p>
+<hr />
+<p>On the morning of April 20, my colleague Willie emailed me a
+transcript of a long conversation he’d had with Claude about the ethics
+of AI in warfare. He’d found it unexpectedly good and thought it could
+seed an exercise for our first-year business sequence. He wanted to
+brainstorm it with four or five other faculty, ideally asynchronously,
+ideally soon.</p>
+<p>Under ten hours later, <strong>MindForum</strong> was live on my VPS,
+preloaded with his transcript and a draft of a student-facing AI prompt,
+with a facilitator AI waiting in the chat. I had already sent the first
+<code>@ai help me get started</code>, found the reply thin, tuned the
+system prompt, and spun the room back up.</p>
+<p>No part of this story is about AI writing code faster than humans.
+It’s about what happens to the <em>shape of software</em> when building
+becomes cheap enough that you can make a tool that fits one specific
+group’s one specific problem.</p>
+<h2 id="the-collaboration-chain">The collaboration chain</h2>
+<p>The speed didn’t come from one person moving fast. It came from three
+people each doing the part they were best at, and handing off
+cleanly.</p>
+<p><strong><a
+href="https://github.com/ashcastelinocs124">Ash</a></strong> — an MSBA
+student at Gies — wrote the spec. After a few Teams messages that
+morning, he came back with two careful design documents: a data model
+and a task-by-task implementation plan. Rooms in memory, SSE for live
+updates, PDF/DOCX parsing, a “Generate project brief” button using
+structured JSON output. Not a wishlist — runnable instructions.</p>
+<p><strong>I executed from his spec.</strong> Cloned his repo, worked
+through the 18-task plan with Claude Opus 4.7 over a few hours, adapted
+a few things (moved the model to <code>gpt-5.4</code>, instantiated the
+OpenAI client per-request to avoid Vercel-style build-phase failures),
+kept most of Ash’s architecture intact. Pushed to GitHub.</p>
+<p><strong>Ash polished the UI.</strong> He pulled my commit and added
+an orange pill badge highlighting <code>@ai</code> mentions in the
+composer, so users see the trigger activate before sending. A small
+change that makes the interaction obvious — exactly the sort of thing I
+would never have prioritized.</p>
+<p><strong>I handled the deploy.</strong> Almost none of which was new
+work. My VPS was already running five other apps; my reverse proxy
+already had a pattern for pointing new subdomains at internal ports;
+previous deploys had all the gotchas documented — catch-all worker,
+nginx streaming settings, systemd unit. An existing app on the same box
+had a working OpenAI key in its <code>.env</code>; I reused it. The only
+genuinely new thing was a per-repo deploy key on GitHub. Total deploy
+time: 45 minutes, spread across an afternoon. This is the point I made
+in <a
+href="https://chatwithgpt.substack.com/p/build-it-and-they-will-learn">my
+last newsletter</a> — you build the first custom tool the slow way, and
+every subsequent one lands on infrastructure you’ve already paid
+for.</p>
+<p>Three people, clear roles, under ten hours of wall-clock time from
+email to tested app. Nobody worked through the night. Nobody held a
+meeting.</p>
+<h2 id="what-the-app-actually-is">What the app actually is</h2>
+<p><a
+href="https://github.com/gies-ai-experiments/MindForum">MindForum</a> is
+1,000 lines of TypeScript across a Next.js 15 app with one purpose: let
+a small group chat together with an AI that only speaks when mentioned.
+Someone creates a room, pastes a system prompt, invites others with a
+link. Anyone can upload documents. <code>@ai</code> pulls the AI into
+the conversation; everyone sees its reply. One button turns the
+conversation into a structured brief (themes, outline, risks, next
+steps, suggested collaborators) that exports as clean markdown.</p>
+<p>The features it <em>doesn’t</em> have are the point:</p>
+<ul>
+<li><strong>No authentication.</strong> The room link is the gate.
+Anyone with it joins with a name and email — no signup, no verification,
+no invitation flow.</li>
+<li><strong>A database arrived late.</strong> The MVP used one Node
+process’s memory and was fine for the first few rooms. When it became
+clear a second use case was coming — and restarts would lose real data —
+I added Postgres in an afternoon. Four tables, one migration script, no
+schema gymnastics. The point isn’t “start with no database”; the point
+is start with <em>the simplest persistence that matches today’s use</em>
+and add weight only when a use case earns it.</li>
+<li><strong>No roles, moderation, permissions, analytics, or feature
+flags.</strong> Faculty peers don’t need a hierarchy. None of the rest
+is needed either.</li>
+<li><strong>No generic AI chat.</strong> The bot stays silent until
+mentioned. Plain messages are for humans talking to humans.</li>
+</ul>
+<p>What it <em>does</em> have, it handles carefully:</p>
+<ul>
+<li><strong>Streaming replies.</strong> Tokens stream in as they’re
+generated, so users see the AI thinking rather than staring at dead
+air.</li>
+<li><strong>Per-room system prompt.</strong> Every room has its own AI
+guidance, set at creation and visible as a collapsible card so joiners
+see how the facilitator was configured.</li>
+<li><strong>Document grounding.</strong> Uploads are parsed server-side
+and injected into the AI’s context when selected.</li>
+</ul>
+<p><a
+href="https://chatwithgpt.substack.com/p/the-magnitude-9-earthquake-how-ai">When
+software gets this cheap to build</a>, you stop designing for scale you
+don’t have and start designing for the exact shape of the problem in
+front of you.</p>
+<h2 id="what-the-prototype-made-visible">What the prototype made
+visible</h2>
+<p>Here’s the part I didn’t expect.</p>
+<p>I asked Willie to write a system prompt for the room. I had drafted
+one of my own. I expected a minor editing exercise where we’d merge the
+two.</p>
+<p>His didn’t look like mine at all. Mine was facilitation — probe,
+pressure-test, ask one question at a time. His was a 600-word manifesto
+on epistemic integrity: <em>hold position under pressure, name
+sycophancy when it happens, don’t update because the user seems
+frustrated</em>.</p>
+<p>Over email we would’ve had a low-stakes disagreement and lost a week.
+With the app between us, the ambiguity was suddenly concrete: I pasted
+his prompt in and saw what the AI would do if it ran the brainstorm. It
+wouldn’t facilitate at all. It would argue.</p>
+<p>The resolution: <strong>we were talking about two different
+AIs.</strong> My prompt governs the brainstorm room — a workflow tool.
+Willie’s is a draft of the <em>student-facing</em> AI the exercise
+produces — the one students will eventually talk to. Different AIs,
+different jobs, and the deliverable is now explicitly two artifacts: a
+scenario and a student-facing prompt.</p>
+<p>I don’t think we would have converged on that framing by writing more
+documents. Requirements docs let people talk past each other
+indefinitely because the words look like agreement. The app, because it
+had to <em>do something</em> with both prompts, forced the distinction
+into the open within an hour.</p>
+<h2 id="the-low-friction-shape">The low-friction shape</h2>
+<p>Look at what the feature set implies about who this is for.</p>
+<p>No auth means: <em>trusted small groups sharing a private link</em>.
+A four-table Postgres schema with no migrations framework means:
+<em>durable enough for a semester, not built for ten years</em>.
+Per-room system prompts mean: <em>every room has a specific purpose the
+creator has thought about</em>. Document upload with automatic AI
+grounding means: <em>the work starts from real material, not a blank
+page</em>.</p>
+<p>You can’t buy a tool that makes those tradeoffs. A commercial
+group-chat-with-AI platform has to solve for auth, multi-tenancy,
+billing, compliance, moderation. Those features aren’t wrong; they’re
+tuned for a different audience. A tool for five colleagues over three
+days is a different object than a tool for a 50,000-person
+organization.</p>
+<p>This is what people are starting to call <strong>Personal
+Software</strong> — software built to fit one person or one small group,
+not amortized over a million users. The term isn’t mine; Geoffrey Litt
+and Ink &amp; Switch have been sketching it for a while. What’s changed
+is the economics. Until recently, building custom for a transient
+five-person need cost more than the need was worth, so you got software
+designed for someone else. Now it costs about the same as scheduling the
+kickoff meeting. The default stops being “find a SaaS that’s close
+enough” and starts being “what exactly do we need for this week.”</p>
+<p>A few more MindForum rooms are coming over the next few weeks: a
+grant proposal, a curriculum redesign, a faculty search committee
+reading candidate files. Some will die when they’re done. A few will
+persist because the conversation itself is the artifact — what fifteen
+students said about a course, what four faculty decided after arguing
+through a draft. That’s what pushed me to add Postgres yesterday: the
+second use case made the conversations worth keeping.</p>
+<h2 id="second-room-second-problem-the-next-day">Second room, second
+problem — the next day</h2>
+<p>I’d planned to let MindForum sit for a week. It sat for one
+afternoon.</p>
+<p>I was teaching my undergraduate Tech &amp; AI Strategy course — end
+of semester, the moment when you want honest student feedback and almost
+never get it. The usual instruments are bad: Canvas evaluations arrive
+anonymized but after grades are in; verbal feedback skews toward
+whoever’s comfortable talking in front of peers; Google Forms get you
+fragments with no conversation.</p>
+<p>I named a new room, wrote a short facilitator prompt (<em>“Help me
+gather candid feedback. Stay quiet unless mentioned with
+<code>@ai</code>. Cluster into themes. Be neutral — do not defend the
+course.”</em>), uploaded a one-page “course at a glance” markdown file
+so students and the AI could both name specific weeks, and projected the
+join link. Total setup: under five minutes, on the podium, while the
+students pulled out laptops.</p>
+<p>Eighteen joined. Over twenty-five minutes they filled the room with
+twenty-three messages. Not “the course was great” — specifics:
+<em>“assignments were rushed and needed more explanation.”</em> <em>“The
+agentic workflow felt like too much. Daily notes felt like busy
+work.”</em> <em>“I spent most of my time figuring out how to do the
+assignment, not actually doing it.”</em> One student typed
+<code>@ai make a response about how assignments were rushed</code>, and
+the AI replied with a targeted follow-up: which two assignments, and
+what “more personalization” would mean. The student answered. A named
+assignment and a concrete fix surfaced in ninety seconds.</p>
+<p>The room has a trick I hadn’t planned for. Joining requires a name
+and email but the server doesn’t verify either. A facilitator can tell
+students to use pseudonyms and get genuinely anonymous input in a shared
+space where themes still cluster visibly. My students used real names —
+this group trusts each other — but the optionality is there. You get
+<em>group brainstorming</em> dynamics without the <em>forced
+attribution</em> cost.</p>
+<p>When I hit <strong>Generate project brief</strong> at the end, the AI
+produced a 2,000-word structured document: five themes, seven risks, an
+outline grounded in actual student quotes, a “what to keep” section,
+next steps. I pulled a JSON dump from the Postgres side,
+cross-referenced every theme against my course files and my <a
+href="https://chatwithgpt.substack.com/p/build-it-and-they-will-learn">teaching
+philosophy notes</a>, and by evening had a prioritized Spring 2027
+change list — each change tied to a student quote and a pedagogical
+principle, sorted P0/P1/P2.</p>
+<p>The tool didn’t do the analysis for me. It eliminated the twenty
+hours I’d normally spend stitching scattered feedback together and
+trying to cluster themes. The clustering was already done, by the AI, in
+the students’ own words, while the students were still in the room to
+react to it.</p>
+<p>Same codebase as the faculty brainstorm tool. Different system
+prompt, different uploaded file, different audience. No feature added.
+No deploy. No meeting with IT. Zero to answer in under thirty minutes of
+class time.</p>
+<h2 id="faculty-practicing-what-theyll-teach">Faculty practicing what
+they’ll teach</h2>
+<p>Willie’s exercise is going to put freshmen in conversation with an AI
+configured to push back, hold positions, and refuse sycophantic
+agreement. The pedagogical goal is that students learn to notice the
+difference between honest disagreement and theatrical capitulation.</p>
+<p>The route to designing that exercise — a custom-built tool, spun up
+in a day, that let three people and an AI iterate together on what the
+exercise should be — is itself a version of what the exercise is trying
+to teach. We didn’t wait for IT to build something. We didn’t argue
+about requirements. We built the thing, tested it, and the thing told us
+what we’d left unclear.</p>
+<p>Business schools talk a lot about how AI is reshaping work. <a
+href="https://chatwithgpt.substack.com/p/the-classroom-where-ai-and-students">One
+way it reshapes work</a> is that the people closest to the problem can
+now build the tool — not “prompt ChatGPT to write an essay,” but
+actually ship working software that does the specific job, deploy it,
+invite real colleagues, iterate. That capability is now within reach of
+any faculty member willing to pair with a student, a TA, or Claude.</p>
+<p>This is the loop I keep returning to in <a
+href="https://chatwithgpt.substack.com/p/build-it-and-they-will-learn">my
+talks</a>: <strong>Learn to Build. Build to Learn.</strong> The first
+half is capability — getting fluent enough with AI as a collaborator
+that shipping a small thing stops being intimidating. The second half is
+pedagogy — the act of building is how you discover what you actually
+believe about a problem. The halves aren’t sequential; they compound.
+Willie and I didn’t learn to build and then sit down to design the
+exercise — we learned what the exercise <em>was</em> by building the
+tool to design it. And my students gave me sharper feedback precisely
+because they’d spent the semester shipping their own MVPs and knew from
+the inside what “this instruction was unclear” actually felt like.</p>
+<h2 id="whats-in-the-repo">What’s in the repo</h2>
+<p>Everything is on GitHub at <a
+href="https://github.com/gies-ai-experiments/MindForum">gies-ai-experiments/MindForum</a>,
+including:</p>
+<ul>
+<li>The app code (~1,000 lines, Next.js 15 + TypeScript + SSE)</li>
+<li>Ash’s <a
+href="https://github.com/gies-ai-experiments/MindForum/blob/main/docs/plans/2026-04-20-seminar-room-design.md">design
+doc</a> and <a
+href="https://github.com/gies-ai-experiments/MindForum/blob/main/docs/plans/2026-04-20-seminar-room.md">task
+plan</a> that started it</li>
+<li>A <a
+href="https://github.com/gies-ai-experiments/MindForum/issues/1">handoff
+issue</a> I opened for Ash documenting what I changed versus his
+spec</li>
+</ul>
+<p>If you want to run your own: <code>git clone</code>, add an OpenAI
+key to <code>.env.local</code>,
+<code>npm install &amp;&amp; npm run dev</code>. Deployment recipe
+(systemd + nginx with SSE-safe settings) is in the README.</p>
+<p>None of this is novel software engineering. What’s novel is that a
+faculty member, an MSBA student, and an AI assistant can build and
+deploy a custom tool in a single afternoon, have it fit one problem
+exactly — and then, the next day, have it fit a completely different
+problem that didn’t exist when we built it.</p>
+<p>Willie’s faculty cohort is in the room now. The student-feedback room
+from yesterday is already driving the Spring 2027 syllabus. Two rooms,
+two audiences, two problems that would have been three weeks of work
+each a year ago.</p>
+<p>The next room is the one after that.</p>
