@@ -55,7 +55,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-Manual upload of cover images + final "Publish" clicks on Substack and LinkedIn drafts; then paste the published Substack URL into X tweet 15 and "Post all". After that: faculty invitation email for the 01-sequence AI ethics brainstorm room.
+Set OpenAI monthly spend cap on the dedicated MindForum key. Then send the faculty invitation email for the 01-sequence AI ethics brainstorm room (`-xM9Qgfk4g`). Article is live: <https://chatwithgpt.substack.com/p/email-to-tested-app-in-under-ten>.
 
 ## Roadmap
 
@@ -71,7 +71,7 @@ Manual upload of cover images + final "Publish" clicks on Substack and LinkedIn 
 - [x] `POST /api/room` gated behind `ADMIN_TOKEN` (defense-in-depth for public repo)
 - [x] Hybrid Builder article drafted, trimmed, RSA-Animate cover images generated (v1 picked)
 - [x] Substack + LinkedIn drafts loaded; X thread composed in modal
-- [ ] Final publish: cover image uploads + click Publish on each platform; replace `[INSERT SUBSTACK URL AFTER PUBLISH]` placeholder in X tweet 15
+- [x] Final publish on Substack + LinkedIn + X (live 2026-04-25)
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `-xM9Qgfk4g`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
@@ -85,5 +85,6 @@ Manual upload of cover images + final "Publish" clicks on Substack and LinkedIn 
 - Completed (security + public flip): Scrubbed prod URL from `CLAUDE.md` (now in auto-memory). Gated `POST /api/room` behind `ADMIN_TOKEN` (constant-time compare); homepage picks up `?token=...` and caches in localStorage. Stripped `rooms/` directory from full git history via `git filter-repo`. Force-pushed. Repo flipped PUBLIC with MIT LICENSE, description, topics (`personal-software` included).
 - Completed (drafts loaded): Substack draft `195027435`. LinkedIn Article `7452703510472724480` ("Draft - saved" confirmed). X thread composed in compose modal — 15 tweets, all under 280 chars, `[INSERT SUBSTACK URL AFTER PUBLISH]` placeholder in tweet 15.
 - Completed (process learnings): Parallel-subagent sanity check passed; LinkedIn + X drafts produced concurrently in ~24 min wall time (vs ~34 min serial). Saved memories: Personal Software framing rules; intermediate-artifact cleanup discipline; MindForum prod URL.
-- Carry-forward: Manual cover image uploads + Publish clicks on each platform. Substack URL placeholder must be filled into X tweet 15 BEFORE clicking Post-all (compose modal must remain open — only tweet 1 persists in X drafts). OpenAI monthly spend cap on dedicated MindForum key.
+- Completed (live publish): Article live on all three platforms (2026-04-25). Substack: <https://chatwithgpt.substack.com/p/email-to-tested-app-in-under-ten>.
+- Carry-forward: OpenAI monthly spend cap on dedicated MindForum key.
 - Next: Faculty invitation email for room `-xM9Qgfk4g`. Then: collect first-session feedback, iterate.
