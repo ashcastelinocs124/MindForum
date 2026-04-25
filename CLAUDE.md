@@ -10,7 +10,7 @@ Shared AI brainstorming room app for small faculty groups. Next.js 15 + SSE + Po
 | VPS path | `/root/repos/mindforum` (ssh alias `vps`) |
 | Process | PM2 id `mindforum`, port 3006 |
 | Database | Postgres: role `mindforum`, db `mindforum`, localhost:5432 |
-| Repo | `gies-ai-experiments/MindForum` (private; deploy key `mindforum_deploy` on VPS) |
+| Repo | `gies-ai-experiments/MindForum` (public, MIT; deploy key `mindforum_deploy` on VPS) |
 
 ## Required env vars
 
@@ -55,7 +55,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-Publish the Hybrid Builder article about this build, then send the faculty invitation email for the 01-sequence AI ethics brainstorm.
+Manual upload of cover images + final "Publish" clicks on Substack and LinkedIn drafts; then paste the published Substack URL into X tweet 15 and "Post all". After that: faculty invitation email for the 01-sequence AI ethics brainstorm room.
 
 ## Roadmap
 
@@ -67,12 +67,23 @@ Publish the Hybrid Builder article about this build, then send the faculty invit
 - [x] Admin seed endpoint (URL-stable rooms)
 - [x] Per-IP rate limiter
 - [x] Postgres persistence (chat history survives restarts)
-- [ ] Publish Hybrid Builder article (draft stashed)
+- [x] Repo flipped public + MIT LICENSE + topics; `rooms/` stripped from history
+- [x] `POST /api/room` gated behind `ADMIN_TOKEN` (defense-in-depth for public repo)
+- [x] Hybrid Builder article drafted, trimmed, RSA-Animate cover images generated (v1 picked)
+- [x] Substack + LinkedIn drafts loaded; X thread composed in modal
+- [ ] Final publish: cover image uploads + click Publish on each platform; replace `[INSERT SUBSTACK URL AFTER PUBLISH]` placeholder in X tweet 15
+- [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `-xM9Qgfk4g`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
 
 ## Session Log
 
-### 2026-04-21
-- Completed: Built MVP end-to-end from Ash's spec (9d706fb → d099a80). Deployed on VPS with PM2 + nginx + Cloudflare null worker route. Added room config for the 01-sequence AI ethics brainstorm, including Willie's transcript + his draft student-facing prompt. Added `/api/admin/seed` for URL-stable rooms. Shipped per-IP rate limits. Migrated from in-memory Map to Postgres via `db/schema.sql` + `scripts/migrate.mjs` (Codex-reviewed). Drafted Hybrid Builder article (stashed WIP, not yet published).
-- Next: Unstash and finish the article (link verification, editorial review, HTML, cover images, publish). Then send the faculty invitation email for `/room/-xM9Qgfk4g`.
+### 2026-04-21 → 2026-04-25
+- Completed (build + Postgres): MVP end-to-end from Ash's spec, VPS deploy, per-IP rate limits, `/api/admin/seed`, Postgres persistence migration (Codex-reviewed).
+- Completed (in-class experiment): Used MindForum live in BADM 350 (room `a2-QCVJ5m7`) to collect end-of-semester feedback from 18 students in 25 min. Drafted Spring 2027 change list (`/Users/vishal/teaching/badm350/spring2026/feedback/reports/`) cross-referencing student quotes against teaching-philosophy notes.
+- Completed (article): Hybrid Builder article drafted around the 10-hour build + classroom second-use story. Trimmed 3057 → 2394 words. Named **Personal Software** (Litt / Ink & Switch) and **Build to Learn / Learn to Build** as recurring frames. RSA-Animate cover images generated via `gpt-image-1` (v1 picked); cropped to LinkedIn 1200×628, X 1200×675, Substack banner 1100×220 via PIL.
+- Completed (security + public flip): Scrubbed prod URL from `CLAUDE.md` (now in auto-memory). Gated `POST /api/room` behind `ADMIN_TOKEN` (constant-time compare); homepage picks up `?token=...` and caches in localStorage. Stripped `rooms/` directory from full git history via `git filter-repo`. Force-pushed. Repo flipped PUBLIC with MIT LICENSE, description, topics (`personal-software` included).
+- Completed (drafts loaded): Substack draft `195027435`. LinkedIn Article `7452703510472724480` ("Draft - saved" confirmed). X thread composed in compose modal — 15 tweets, all under 280 chars, `[INSERT SUBSTACK URL AFTER PUBLISH]` placeholder in tweet 15.
+- Completed (process learnings): Parallel-subagent sanity check passed; LinkedIn + X drafts produced concurrently in ~24 min wall time (vs ~34 min serial). Saved memories: Personal Software framing rules; intermediate-artifact cleanup discipline; MindForum prod URL.
+- Carry-forward: Manual cover image uploads + Publish clicks on each platform. Substack URL placeholder must be filled into X tweet 15 BEFORE clicking Post-all (compose modal must remain open — only tweet 1 persists in X drafts). OpenAI monthly spend cap on dedicated MindForum key.
+- Next: Faculty invitation email for room `-xM9Qgfk4g`. Then: collect first-session feedback, iterate.
