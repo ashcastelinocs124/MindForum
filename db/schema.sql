@@ -59,3 +59,9 @@ CREATE INDEX IF NOT EXISTS room_files_room_uploaded_idx
 
 INSERT INTO schema_migrations (version) VALUES (1)
   ON CONFLICT (version) DO NOTHING;
+
+-- v2: per-participant last_seen_at for catch-up modal
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+
+INSERT INTO schema_migrations (version) VALUES (2)
+  ON CONFLICT (version) DO NOTHING;
