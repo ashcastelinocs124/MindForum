@@ -46,6 +46,14 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const [briefPending, setBriefPending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
+  type CatchupData =
+    | { kind: "orientation"; systemPrompt: string; files: { id: string; name: string }[] }
+    | { kind: "debrief" | "catchup"; bullets: string[] }
+    | { kind: "error" };
+  const [catchupOpen, setCatchupOpen] = useState(false);
+  const [catchupData, setCatchupData] = useState<CatchupData | null>(null);
+  const [catchupLoading, setCatchupLoading] = useState(false);
+
   // Prefill name + email from previous session so returning users don't retype.
   useEffect(() => {
     try {
@@ -80,11 +88,27 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
         setJoinError("Could not join.");
         return;
       }
+      const joinJson: {
+        participantId: string;
+        catchupHint?: { should: false } | { should: true; since: number | null };
+      } = await res.json().catch(() => ({ participantId: "" }));
       try {
         localStorage.setItem("mindforum_name", trimmedName);
         localStorage.setItem("mindforum_email", trimmedEmail);
       } catch {}
       setJoined(true);
+
+      if (joinJson.catchupHint?.should) {
+        const since = joinJson.catchupHint.since;
+        setCatchupOpen(true);
+        setCatchupLoading(true);
+        const sinceQs = since != null ? `?since=${since}` : "";
+        fetch(`/api/room/${id}/catchup${sinceQs}`)
+          .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+          .then((data: CatchupData) => setCatchupData(data))
+          .catch(() => setCatchupData({ kind: "error" }))
+          .finally(() => setCatchupLoading(false));
+      }
     } finally {
       setJoining(false);
     }
@@ -248,6 +272,95 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
         background: "var(--bg)",
       }}
     >
+      {catchupOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 520,
+              width: "90%",
+              boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+              fontFamily: "system-ui, sans-serif",
+              color: "var(--navy)",
+            }}
+          >
+            <h2 style={{ margin: 0, marginBottom: 12, fontFamily: "Montserrat, sans-serif" }}>
+              {catchupData?.kind === "orientation"
+                ? `Welcome to ${state.name}`
+                : catchupData?.kind === "catchup"
+                ? "What you missed"
+                : "Catch up"}
+            </h2>
+
+            {catchupLoading && <p>Generating summary…</p>}
+
+            {!catchupLoading && catchupData?.kind === "orientation" && (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  You're the first one here — no discussion yet.
+                </p>
+                {catchupData.systemPrompt && (
+                  <>
+                    <strong>What this room is for:</strong>
+                    <p style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
+                      {catchupData.systemPrompt}
+                    </p>
+                  </>
+                )}
+                {catchupData.files.length > 0 && (
+                  <>
+                    <strong>Files already shared:</strong>
+                    <ul>
+                      {catchupData.files.map((f) => (
+                        <li key={f.id}>{f.name}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <p>Go ahead and say hi to kick it off.</p>
+              </>
+            )}
+
+            {!catchupLoading &&
+              (catchupData?.kind === "debrief" || catchupData?.kind === "catchup") && (
+                <ul style={{ paddingLeft: 20 }}>
+                  {catchupData.bullets.map((b, i) => (
+                    <li key={i} style={{ marginBottom: 8 }}>
+                      {b}
+                    </li>
+                  ))}
+                  {catchupData.bullets.length === 0 && (
+                    <li>Nothing notable yet — scroll up to read along.</li>
+                  )}
+                </ul>
+              )}
+
+            {!catchupLoading && catchupData?.kind === "error" && (
+              <p>Couldn't generate a summary — scroll up to see the conversation.</p>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => setCatchupOpen(false)} style={btnSecondary()}>
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <header
         style={{
           display: "flex",
