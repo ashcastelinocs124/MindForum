@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, use } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Participant = { id: string; name: string; email: string; joinedAt: number };
 type PublicFile = {
@@ -504,9 +506,25 @@ function MsgView({ m }: { m: Msg }) {
       }}
     >
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>{m.authorName}</div>
-      <div style={{ whiteSpace: "pre-wrap" }}>
+      <div
+        style={
+          isAi
+            ? { /* markdown handles whitespace */ }
+            : { whiteSpace: "pre-wrap" }
+        }
+        className={isAi ? "msg-md" : undefined}
+      >
         {m.content ? (
-          renderWithAiMentions(m.content)
+          isAi ? (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={mdComponents}
+            >
+              {m.content}
+            </ReactMarkdown>
+          ) : (
+            renderWithAiMentions(m.content)
+          )
         ) : isAi ? (
           <span style={{ color: "var(--muted)", fontStyle: "italic" }}>thinking…</span>
         ) : null}
@@ -514,6 +532,122 @@ function MsgView({ m }: { m: Msg }) {
     </div>
   );
 }
+
+const mdComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p style={{ margin: "0 0 8px" }}>{children}</p>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul style={{ margin: "0 0 8px", paddingLeft: 22 }}>{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol style={{ margin: "0 0 8px", paddingLeft: 22 }}>{children}</ol>
+  ),
+  li: ({ children }: { children?: React.ReactNode }) => (
+    <li style={{ margin: "2px 0" }}>{children}</li>
+  ),
+  code: ({
+    inline,
+    children,
+  }: {
+    inline?: boolean;
+    children?: React.ReactNode;
+  }) =>
+    inline === false ? (
+      <code>{children}</code>
+    ) : (
+      <code
+        style={{
+          background: "var(--border)",
+          padding: "1px 5px",
+          borderRadius: 3,
+          fontSize: "0.92em",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        }}
+      >
+        {children}
+      </code>
+    ),
+  pre: ({ children }: { children?: React.ReactNode }) => (
+    <pre
+      style={{
+        background: "var(--border)",
+        padding: 10,
+        borderRadius: 6,
+        overflowX: "auto",
+        margin: "0 0 8px",
+        fontSize: "0.9em",
+      }}
+    >
+      {children}
+    </pre>
+  ),
+  a: ({
+    href,
+    children,
+  }: {
+    href?: string;
+    children?: React.ReactNode;
+  }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ color: "var(--orange)", textDecoration: "underline" }}
+    >
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }: { children?: React.ReactNode }) => (
+    <blockquote
+      style={{
+        borderLeft: "3px solid var(--border)",
+        paddingLeft: 10,
+        margin: "0 0 8px",
+        color: "var(--muted)",
+      }}
+    >
+      {children}
+    </blockquote>
+  ),
+  h1: ({ children }: { children?: React.ReactNode }) => (
+    <h3 style={{ margin: "10px 0 6px", fontSize: "1.05em" }}>{children}</h3>
+  ),
+  h2: ({ children }: { children?: React.ReactNode }) => (
+    <h3 style={{ margin: "10px 0 6px", fontSize: "1.05em" }}>{children}</h3>
+  ),
+  h3: ({ children }: { children?: React.ReactNode }) => (
+    <h4 style={{ margin: "8px 0 4px", fontSize: "1em" }}>{children}</h4>
+  ),
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <table
+      style={{
+        borderCollapse: "collapse",
+        margin: "0 0 8px",
+        fontSize: "0.95em",
+      }}
+    >
+      {children}
+    </table>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th
+      style={{
+        border: "1px solid var(--border)",
+        padding: "4px 8px",
+        textAlign: "left",
+        background: "var(--card)",
+      }}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td style={{ border: "1px solid var(--border)", padding: "4px 8px" }}>
+      {children}
+    </td>
+  ),
+};
 
 function renderWithAiMentions(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
