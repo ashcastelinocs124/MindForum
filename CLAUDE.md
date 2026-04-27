@@ -73,9 +73,11 @@ Set OpenAI monthly spend cap on the dedicated MindForum key. Then send the facul
 - [x] Substack + LinkedIn drafts loaded; X thread composed in modal
 - [x] Final publish on Substack + LinkedIn + X (live 2026-04-25)
 - [x] GPM stakeholder brainstorm room (`gpm-brainstorm`) seeded with Marketplace Co-pilot prompt + proposal file uploaded
+- [x] MSBAi stakeholder rooms seeded (`msbai-pilot-faculty` 22 files, `msbai-corporate-partners` 8 files); daily KB refresh via `rooms/refresh-msbai-kb.sh` cron at 06:00 UTC; system prompts auto-stamp `last refresh` date
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `-xM9Qgfk4g`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
+- [ ] **2026-05-25 review:** four weeks after MSBAi rooms launch — check usage signal (faculty engagement vs lurking) to decide whether to keep brainstorm framing or convert to a K-ai-activity-mirror digest (see `.claude/plans/file-content-preview-ux.md` for the broader UX direction)
 
 ## Session Log
 
