@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getRoom, snapshot } from "@/lib/store";
+import { getRoom, setParticipantLastSeen, snapshot } from "@/lib/store";
 import { subscribe, unsubscribe } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const room = await getRoom(id);
   if (!room) return new Response("Not found", { status: 404 });
+
+  const cookieName = `mindforum_pid_${id}`;
+  const participantId = req.cookies.get(cookieName)?.value ?? null;
 
   const stream = new TransformStream<Uint8Array, Uint8Array>();
   const writer = stream.writable.getWriter();
@@ -24,6 +27,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   const onClose = () => {
     clearInterval(hb);
+    if (participantId) {
+      setParticipantLastSeen(id, participantId, Date.now()).catch((err) => {
+        console.error("setParticipantLastSeen failed:", err);
+      });
+    }
     unsubscribe(id, writer);
     writer.close().catch(() => {});
   };
