@@ -122,3 +122,43 @@ export async function generateBrief(
   const raw = res.choices[0]?.message?.content ?? "{}";
   return JSON.parse(raw) as Brief;
 }
+
+const MAX_CATCHUP_HISTORY = 200;
+
+export async function generateCatchupBullets(
+  messages: Message[],
+  files: RoomFile[],
+  systemPrompt: string,
+  mode: "debrief" | "catchup"
+): Promise<string[]> {
+  const recent = messages.slice(-MAX_CATCHUP_HISTORY);
+  const framing =
+    mode === "debrief"
+      ? "Summarize the entire room conversation so far for a newcomer joining now. Capture topics, decisions, open questions, and notable file references. 5-8 bullets."
+      : "Summarize what has happened in this room since the participant last left. Focus on what's new — new topics, decisions, questions, or files. 5-8 bullets.";
+
+  const system = `You produce catch-up bullets for a MindForum room. ${framing} Each bullet is one short sentence, concrete and grounded in the actual conversation. Do not invent participants or events. If a bullet category has nothing real to say, drop it rather than padding.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
+
+  const res = await client().chat.completions.create({
+    model: MODEL_CHAT,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "CatchupBullets",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            bullets: { type: "array", items: { type: "string" } },
+          },
+          required: ["bullets"],
+        },
+      },
+    },
+    messages: [{ role: "system", content: system }, ...historyBlock(recent)],
+  });
+  const raw = res.choices[0]?.message?.content ?? "{}";
+  const parsed = JSON.parse(raw) as { bullets: string[] };
+  return parsed.bullets;
+}
