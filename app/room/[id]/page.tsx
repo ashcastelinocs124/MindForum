@@ -306,7 +306,12 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                 : "Catch up"}
             </h2>
 
-            {catchupLoading && <p>Generating summary…</p>}
+            {catchupLoading && (
+              <p style={{ marginTop: 0 }}>
+                Generating summary — please wait a few seconds. The
+                <strong> Got it</strong> button will activate once it's ready.
+              </p>
+            )}
 
             {!catchupLoading && catchupData?.kind === "orientation" && (
               <>
@@ -354,8 +359,16 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-              <button onClick={() => setCatchupOpen(false)} style={btnSecondary()}>
-                Got it
+              <button
+                onClick={() => setCatchupOpen(false)}
+                disabled={catchupLoading}
+                style={{
+                  ...btnSecondary(),
+                  opacity: catchupLoading ? 0.5 : 1,
+                  cursor: catchupLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                {catchupLoading ? "Waiting for summary…" : "Got it"}
               </button>
             </div>
           </div>
