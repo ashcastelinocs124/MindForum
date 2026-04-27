@@ -17,6 +17,7 @@ export type Participant = {
   name: string;
   email: string;
   joinedAt: number;
+  lastSeenAt: number | null;
 };
 
 export type Message = {
@@ -59,12 +60,14 @@ function toParticipant(r: {
   name: string;
   email: string;
   joined_at: Date;
+  last_seen_at: Date | null;
 }): Participant {
   return {
     id: r.id,
     name: r.name,
     email: r.email,
     joinedAt: r.joined_at.getTime(),
+    lastSeenAt: r.last_seen_at ? r.last_seen_at.getTime() : null,
   };
 }
 
@@ -169,8 +172,9 @@ export async function getRoom(id: string): Promise<Room | null> {
         name: string;
         email: string;
         joined_at: Date;
+        last_seen_at: Date | null;
       }>(
-        `SELECT id, name, email, joined_at FROM participants
+        `SELECT id, name, email, joined_at, last_seen_at FROM participants
          WHERE room_id = $1 ORDER BY joined_at ASC`,
         [id]
       ),
@@ -248,8 +252,9 @@ export async function upsertParticipant(
       name: string;
       email: string;
       joined_at: Date;
+      last_seen_at: Date | null;
     }>(
-      `SELECT id, name, email, joined_at FROM participants
+      `SELECT id, name, email, joined_at, last_seen_at FROM participants
        WHERE room_id = $1 AND lower(email) = lower($2)`,
       [roomId, email]
     );
@@ -263,10 +268,11 @@ export async function upsertParticipant(
       name: string;
       email: string;
       joined_at: Date;
+      last_seen_at: Date | null;
     }>(
       `INSERT INTO participants (id, room_id, name, email)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, name, email, joined_at`,
+       RETURNING id, name, email, joined_at, last_seen_at`,
       [id, roomId, name, email]
     );
     return toParticipant(rows[0]);
@@ -282,13 +288,38 @@ export async function getParticipant(
     name: string;
     email: string;
     joined_at: Date;
+    last_seen_at: Date | null;
   }>(
-    `SELECT id, name, email, joined_at FROM participants
+    `SELECT id, name, email, joined_at, last_seen_at FROM participants
      WHERE room_id = $1 AND id = $2`,
     [roomId, participantId]
   );
   if (rows.length === 0) return null;
   return toParticipant(rows[0]);
+}
+
+export async function setParticipantLastSeen(
+  roomId: string,
+  participantId: string,
+  at: number
+): Promise<void> {
+  await query(
+    `UPDATE participants SET last_seen_at = to_timestamp($3 / 1000.0)
+     WHERE room_id = $1 AND id = $2`,
+    [roomId, participantId, at]
+  );
+}
+
+export async function countMessagesAfter(
+  roomId: string,
+  afterMillis: number
+): Promise<number> {
+  const { rows } = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM messages
+     WHERE room_id = $1 AND created_at > to_timestamp($2 / 1000.0) AND kind = 'chat'`,
+    [roomId, afterMillis]
+  );
+  return parseInt(rows[0]?.count ?? "0", 10);
 }
 
 // -------- Messages
