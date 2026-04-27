@@ -1,9 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { roomExists, upsertParticipant, getParticipant } from "@/lib/store";
+import {
+  roomExists,
+  upsertParticipant,
+  getParticipant,
+  countMessagesAfter,
+} from "@/lib/store";
 import { broadcast } from "@/lib/sse";
 import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
+
+const REJOIN_THRESHOLD_MS = 15 * 60 * 1000;
+
+type CatchupHint = { should: false } | { should: true; since: number | null };
+
+async function computeHint(
+  roomId: string,
+  isFirstTime: boolean,
+  lastSeenAt: number | null
+): Promise<CatchupHint> {
+  if (isFirstTime || lastSeenAt == null) {
+    return { should: true, since: null };
+  }
+  const elapsed = Date.now() - lastSeenAt;
+  if (elapsed < REJOIN_THRESHOLD_MS) {
+    return { should: false };
+  }
+  const newMessages = await countMessagesAfter(roomId, lastSeenAt);
+  if (newMessages === 0) {
+    return { should: false };
+  }
+  return { should: true, since: lastSeenAt };
+}
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const rate = checkRate("join", clientIp(req), 10, 60 * 1000);
@@ -26,7 +54,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (existingPid) {
     const existing = await getParticipant(id, existingPid);
     if (existing) {
-      return NextResponse.json({ participantId: existing.id });
+      const hint = await computeHint(id, false, existing.lastSeenAt);
+      return NextResponse.json({ participantId: existing.id, catchupHint: hint });
     }
   }
 
@@ -41,10 +70,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "room_not_found" }, { status: 404 });
   }
 
+  const isFirstTime = participant.lastSeenAt == null;
+  const hint = await computeHint(id, isFirstTime, participant.lastSeenAt);
+
   // DB write is durable — safe to broadcast.
   broadcast(id, "participant_joined", participant);
 
-  const res = NextResponse.json({ participantId: participant.id });
+  const res = NextResponse.json({ participantId: participant.id, catchupHint: hint });
   res.cookies.set(cookieName, participant.id, {
     httpOnly: true,
     sameSite: "lax",
