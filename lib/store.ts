@@ -11,6 +11,7 @@
 import { nanoid } from "nanoid";
 import type { PoolClient } from "pg";
 import { pool, query, tx } from "./db";
+import type { SortKey, Direction } from "./admin-sort";
 
 export type Participant = {
   id: string;
@@ -494,4 +495,65 @@ export async function adminAddFile(file: RoomFile): Promise<void> {
       file.selected,
     ]
   );
+}
+
+export type RoomActivityRow = {
+  id: string;
+  name: string;
+  createdAt: Date;
+  msgs24h: number;
+  msgs7d: number;
+  participants7d: number;
+  lastMessageAt: Date | null;
+  totalParticipants: number;
+  fileCount: number;
+};
+
+export async function adminListRoomsWithActivity(opts: {
+  column: SortKey;
+  direction: Direction;
+  q?: string;
+}): Promise<RoomActivityRow[]> {
+  const { column, direction, q } = opts;
+  // column/direction come from the whitelist resolver in lib/admin-sort.ts —
+  // safe to interpolate. q is parameterized.
+  const sql = `
+    SELECT
+      r.id,
+      r.name,
+      r.created_at,
+      COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '24 hours') AS msgs_24h,
+      COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days')   AS msgs_7d,
+      COUNT(DISTINCT m.author_id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days') AS participants_7d,
+      MAX(m.created_at) AS last_message_at,
+      (SELECT COUNT(*) FROM participants p WHERE p.room_id = r.id) AS total_participants,
+      (SELECT COUNT(*) FROM room_files f WHERE f.room_id = r.id)  AS file_count
+    FROM rooms r
+    LEFT JOIN messages m ON m.room_id = r.id
+    WHERE ($1::text IS NULL OR r.name ILIKE '%' || $1 || '%')
+    GROUP BY r.id
+    ORDER BY ${column} ${direction} NULLS LAST
+  `;
+  const result = await query<{
+    id: string;
+    name: string;
+    created_at: Date;
+    msgs_24h: string;
+    msgs_7d: string;
+    participants_7d: string;
+    last_message_at: Date | null;
+    total_participants: string;
+    file_count: string;
+  }>(sql, [q && q.trim() ? q.trim() : null]);
+  return result.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    createdAt: r.created_at,
+    msgs24h: Number(r.msgs_24h),
+    msgs7d: Number(r.msgs_7d),
+    participants7d: Number(r.participants_7d),
+    lastMessageAt: r.last_message_at,
+    totalParticipants: Number(r.total_participants),
+    fileCount: Number(r.file_count),
+  }));
 }
