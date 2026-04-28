@@ -55,7 +55,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Monitor early MSBAi engagement and tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the new `/admin/rooms` dashboard. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
+Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Monitor early MSBAi engagement and the new `ai-ready-illinois-scoping` faculty room; tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the `/admin/rooms` dashboard. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
 
 ## Roadmap
 
@@ -87,5 +87,5 @@ Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2
 ## Session Log
 
 ### 2026-04-28
-- Completed: Fixed first-visit orientation modal in `/room/[id]` ([commit 17b5333](https://github.com/gies-ai-experiments/MindForum/commit/17b5333)) — was dumping the raw `systemPrompt` with no scrollbar, so long facilitator prompts (e.g. air-canada multi-persona scaffolding) overflowed top + bottom of the viewport. Removed `systemPrompt` from the orientation payload and modal entirely (already shown in-room via `GuidanceCard` with show-more truncation), and added `maxHeight: 85vh` + `overflowY: auto` as defense-in-depth for long catch-up bullets. Deployed to VPS.
-- Next: Set OpenAI monthly spend cap on the MindForum key. Tail `/var/log/mindforum-refresh.log` to confirm the MSBAi KB refresh cron is running cleanly. Use `/admin/rooms` to monitor faculty/corporate engagement.
+- Completed: (1) Fixed first-visit orientation modal in `/room/[id]` ([commit 17b5333](https://github.com/gies-ai-experiments/MindForum/commit/17b5333)) — was dumping the raw `systemPrompt` with no scrollbar; removed `systemPrompt` from orientation payload and added `maxHeight: 85vh` + `overflowY: auto` defense-in-depth. (2) Seeded new faculty scoping room `ai-ready-illinois-scoping` for ~20 UIUC faculty discussing the AI-Ready Illinois Coordination Hub NSF proposal; system prompt emphasizes that scope is flexible and participants are not yet committed (config in `rooms/2026-04-28-ai-ready-illinois/`).
+- Next: Set OpenAI monthly spend cap on the MindForum key. Tail `/var/log/mindforum-refresh.log` to confirm the MSBAi KB refresh cron is running cleanly. Upload AI-Ready Illinois deck + Google doc to the new room and share with faculty list.
