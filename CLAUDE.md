@@ -55,7 +55,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-Set OpenAI monthly spend cap on the dedicated MindForum key. Then send the faculty invitation email for the 01-sequence AI ethics brainstorm room (`-xM9Qgfk4g`).
+MSBAi room invitations sent. Now: monitor early engagement (faculty/corporate room activity) and tail `/var/log/mindforum-refresh.log` after first cron run tonight. Set the OpenAI monthly spend cap. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
 
 ## Roadmap
 
@@ -74,13 +74,17 @@ Set OpenAI monthly spend cap on the dedicated MindForum key. Then send the facul
 - [x] Final publish on Substack + LinkedIn + X (live 2026-04-25)
 - [x] GPM stakeholder brainstorm room (`gpm-brainstorm`) seeded with Marketplace Co-pilot prompt + proposal file uploaded
 - [x] MSBAi stakeholder rooms seeded (`msbai-pilot-faculty` 22 files, `msbai-corporate-partners` 8 files); daily KB refresh via `rooms/refresh-msbai-kb.sh` cron at 06:00 UTC; system prompts auto-stamp `last refresh` date
+- [x] Render `@ai` replies as markdown (react-markdown + remark-gfm); human messages keep existing renderer
+- [x] Catch-up modal now blocks "Got it" until summary lands (prevents fast-clickers dismissing before bullets render)
+- [x] Send MSBAi room invitations (faculty/staff list + corporate partners individually) — sent 2026-04-27
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `-xM9Qgfk4g`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
 - [ ] **2026-05-25 review:** four weeks after MSBAi rooms launch — check usage signal (faculty engagement vs lurking) to decide whether to keep brainstorm framing or convert to a K-ai-activity-mirror digest (see `.claude/plans/file-content-preview-ux.md` for the broader UX direction)
+- [ ] File-content preview UX (modal with markdown render) — issue [#5](https://github.com/gies-ai-experiments/MindForum/issues/5), spec in `docs/feature-requests/file-content-preview.md`, owned by student collaborator
 
 ## Session Log
 
-### 2026-04-26
-- Completed: Created and seeded GPM stakeholder brainstorm room (`gpm-brainstorm`) for the Gies Problem Marketplace proposal. Drafted Marketplace Co-pilot system prompt (warm "help shape this" framing, four stakeholder lenses). Uploaded `gpm-proposal.md` via browser automation. Room live at prod URL `/room/gpm-brainstorm`.
-- Next: Set OpenAI monthly spend cap on dedicated MindForum key. Then faculty invitation for room `-xM9Qgfk4g`.
+### 2026-04-27
+- Completed: Stood up two MSBAi stakeholder rooms — `msbai-pilot-faculty` (22 files: full curriculum, 10 syllabi, design + strategy docs) and `msbai-corporate-partners` (8 curated strategy/capability files). Built `seed-msba-rooms.py` (idempotent admin-seed via localhost:3006 to bypass CF UA-block) and `refresh-msbai-kb.sh` daily cron (06:00 UTC) that pulls from `/root/repos/msba-online`, re-curates kb/, and re-seeds with `replaceMode=metadata`. System prompts auto-stamp `last refresh: YYYY-MM-DD` via `{{LAST_UPDATED}}` substitution. Faculty prompt scrubbed of Vishal/Amber attribution per request — directs updates to K-ai email (`msbai@illinihunt.org`); corporate prompt keeps Vishal as named contact. Drafted invitation messages for both audiences. PR #4 (catch-up modal) merged externally during session; deployed with v2 schema migration. Fixed two UI bugs along the way: (1) `@ai` replies were showing literal markdown chars — added react-markdown + remark-gfm, AI messages route through `<ReactMarkdown>` while human messages keep existing `@ai` mention badge; (2) catch-up modal "Got it" was clickable during summary fetch — now disabled with "Waiting for summary…" label until load completes. Plan stashed at `.claude/plans/file-content-preview-ux.md` for the file-content modal UX (deferred).
+- Next: Send the two MSBAi room invitations (drafts ready in each room's `invitation-message.md`). Faculty/staff can go as one email; corporate partners must be individual emails (room is shared — partners can see each other's names by design, may need a heads-up sentence per email if any invitee would be uncomfortable being seen by competitors). Then OpenAI spend cap. Tail `/var/log/mindforum-refresh.log` after first cron run (~01:00 Central tonight) to confirm daily refresh works end-to-end.
