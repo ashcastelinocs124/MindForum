@@ -3,9 +3,22 @@ import { ADMIN_COOKIE, ADMIN_COOKIE_MAX_AGE_S, adminToken, tokenMatches } from "
 
 export const dynamic = "force-dynamic";
 
+// Behind nginx, req.url uses the internal listening address (e.g. localhost:3006),
+// so building redirects with `new URL(path, req.url)` sends the browser to the wrong host.
+// Use the forwarded headers nginx supplies to reconstruct the public origin.
+function publicUrl(req: NextRequest, path: string): URL {
+  const host =
+    req.headers.get("x-forwarded-host") ??
+    req.headers.get("host") ??
+    new URL(req.url).host;
+  const proto =
+    req.headers.get("x-forwarded-proto") ??
+    (process.env.NODE_ENV === "production" ? "https" : "http");
+  return new URL(path, `${proto}://${host}`);
+}
+
 function setCookieAndRedirect(req: NextRequest, token: string): NextResponse {
-  const url = new URL("/admin/rooms", req.url);
-  const res = NextResponse.redirect(url);
+  const res = NextResponse.redirect(publicUrl(req, "/admin/rooms"));
   res.cookies.set(ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -17,7 +30,7 @@ function setCookieAndRedirect(req: NextRequest, token: string): NextResponse {
 }
 
 function unauthorized(req: NextRequest): NextResponse {
-  const url = new URL("/admin/rooms", req.url);
+  const url = publicUrl(req, "/admin/rooms");
   url.searchParams.set("err", "bad_token");
   return NextResponse.redirect(url);
 }
