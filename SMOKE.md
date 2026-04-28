@@ -12,3 +12,18 @@ Run through this after any significant change and before sharing a room link wit
 8. [ ] Hard-refresh B mid-conversation → full state rehydrates from snapshot (participants, messages, files, selection).
 9. [ ] Send a plain message without `@ai` → no AI reply. Bot stays silent.
 10. [ ] Restart the Node process → visiting an old room shows "Room not found". (Expected — ephemeral by design.)
+
+## Admin Rooms Dashboard (`/admin/rooms`)
+
+Prereq: `ADMIN_TOKEN` set in env, dev server running.
+
+1. Visit `/admin/rooms` with no cookie → token form appears (no table, no error banner).
+2. Submit wrong token → form re-renders with "Invalid token." banner.
+3. Submit correct token → redirected to `/admin/rooms`, table renders, URL has no `token=`.
+4. Visit `/admin/rooms/auth?token=$ADMIN_TOKEN` (link form) → cookie set, redirected to `/admin/rooms`.
+5. Confirm at least one row exists per seeded room. Counts for an idle room should be 0/0; for an active room, non-zero.
+6. Click a column header twice → sort flips between ↓ and ↑. URL reflects `?sort=…&dir=…`.
+7. Type a filter and submit → only matching rooms appear; the active sort persists.
+8. Click "Copy" on a row → clipboard contains the absolute URL `https://<host>/room/<id>`. Button shows "Copied" briefly.
+9. Click the room name → opens `/room/<id>` in a new tab.
+10. Wait 24h (or manually delete the cookie) → revisiting `/admin/rooms` shows the form again.
