@@ -55,7 +55,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-MSBAi room invitations sent. Now: monitor early engagement (faculty/corporate room activity) and tail `/var/log/mindforum-refresh.log` after first cron run tonight. Set the OpenAI monthly spend cap. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
+Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Monitor early MSBAi engagement and tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the new `/admin/rooms` dashboard. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
 
 ## Roadmap
 
@@ -77,6 +77,7 @@ MSBAi room invitations sent. Now: monitor early engagement (faculty/corporate ro
 - [x] Render `@ai` replies as markdown (react-markdown + remark-gfm); human messages keep existing renderer
 - [x] Catch-up modal now blocks "Got it" until summary lands (prevents fast-clickers dismissing before bullets render)
 - [x] Send MSBAi room invitations (faculty/staff list + corporate partners individually) — sent 2026-04-27
+- [x] Admin rooms dashboard `/admin/rooms` (sortable activity table, name filter, copy-link, cookie auth via existing `ADMIN_TOKEN`) — shipped 2026-04-28, [PR #6](https://github.com/gies-ai-experiments/MindForum/pull/6)
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `-xM9Qgfk4g`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
@@ -85,6 +86,6 @@ MSBAi room invitations sent. Now: monitor early engagement (faculty/corporate ro
 
 ## Session Log
 
-### 2026-04-27
-- Completed: Stood up two MSBAi stakeholder rooms — `msbai-pilot-faculty` (22 files: full curriculum, 10 syllabi, design + strategy docs) and `msbai-corporate-partners` (8 curated strategy/capability files). Built `seed-msba-rooms.py` (idempotent admin-seed via localhost:3006 to bypass CF UA-block) and `refresh-msbai-kb.sh` daily cron (06:00 UTC) that pulls from `/root/repos/msba-online`, re-curates kb/, and re-seeds with `replaceMode=metadata`. System prompts auto-stamp `last refresh: YYYY-MM-DD` via `{{LAST_UPDATED}}` substitution. Faculty prompt scrubbed of Vishal/Amber attribution per request — directs updates to K-ai email (`msbai@illinihunt.org`); corporate prompt keeps Vishal as named contact. Drafted invitation messages for both audiences. PR #4 (catch-up modal) merged externally during session; deployed with v2 schema migration. Fixed two UI bugs along the way: (1) `@ai` replies were showing literal markdown chars — added react-markdown + remark-gfm, AI messages route through `<ReactMarkdown>` while human messages keep existing `@ai` mention badge; (2) catch-up modal "Got it" was clickable during summary fetch — now disabled with "Waiting for summary…" label until load completes. Plan stashed at `.claude/plans/file-content-preview-ux.md` for the file-content modal UX (deferred).
-- Next: Send the two MSBAi room invitations (drafts ready in each room's `invitation-message.md`). Faculty/staff can go as one email; corporate partners must be individual emails (room is shared — partners can see each other's names by design, may need a heads-up sentence per email if any invitee would be uncomfortable being seen by competitors). Then OpenAI spend cap. Tail `/var/log/mindforum-refresh.log` after first cron run (~01:00 Central tonight) to confirm daily refresh works end-to-end.
+### 2026-04-28
+- Completed: Built and shipped `/admin/rooms` admin dashboard ([PR #6](https://github.com/gies-ai-experiments/MindForum/pull/6), merged) — server-rendered table with sortable columns (last activity, msgs 24h, msgs 7d / unique humans, files, created), name filter, copy-link buttons, activity dots (green/yellow/gray). Auth reuses existing `ADMIN_TOKEN` via httpOnly cookie (24h, constant-time compare); supports both `?token=` link flow and paste-token form. Single aggregate SQL with `FILTER` clauses; sort key whitelisted to prevent SQL injection. Caught two real bugs along the way: (1) `participants_7d` was double-counting `'ai'` as a human — fixed before merge; (2) post-deploy, auth redirect went to `https://localhost:3006/...` because `NextRequest.url` reports the internal listening address behind nginx — fixed by reconstructing public origin from `x-forwarded-host` / `x-forwarded-proto`. Smoke-tested against prod DB via SSH tunnel; manual prod verification confirmed redirect fix.
+- Next: Set OpenAI monthly spend cap on the MindForum key. Tail `/var/log/mindforum-refresh.log` to confirm the MSBAi KB refresh cron is running cleanly. Use `/admin/rooms` to monitor faculty/corporate engagement.
