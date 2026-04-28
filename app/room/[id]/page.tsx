@@ -47,7 +47,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
   type CatchupData =
-    | { kind: "orientation"; systemPrompt: string; files: { id: string; name: string }[] }
+    | { kind: "orientation"; files: { id: string; name: string }[] }
     | { kind: "debrief" | "catchup"; bullets: string[] }
     | { kind: "error" };
   const [catchupOpen, setCatchupOpen] = useState(false);
@@ -293,6 +293,8 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
               padding: 24,
               maxWidth: 520,
               width: "90%",
+              maxHeight: "85vh",
+              overflowY: "auto",
               boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
               fontFamily: "system-ui, sans-serif",
               color: "var(--navy)",
@@ -318,14 +320,6 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                 <p style={{ marginTop: 0 }}>
                   You're the first one here — no discussion yet.
                 </p>
-                {catchupData.systemPrompt && (
-                  <>
-                    <strong>What this room is for:</strong>
-                    <p style={{ marginTop: 4, whiteSpace: "pre-wrap" }}>
-                      {catchupData.systemPrompt}
-                    </p>
-                  </>
-                )}
                 {catchupData.files.length > 0 && (
                   <>
                     <strong>Files already shared:</strong>

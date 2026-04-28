@@ -22,7 +22,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (chatMessages.length === 0) {
     return NextResponse.json({
       kind: "orientation",
-      systemPrompt: room.systemPrompt,
       files: selectedFiles.map((f) => ({ id: f.id, name: f.name })),
     });
   }
