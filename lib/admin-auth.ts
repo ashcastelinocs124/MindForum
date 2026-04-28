@@ -11,10 +11,9 @@ export function adminToken(): string | null {
 
 /** True iff the request carries a cookie matching ADMIN_TOKEN. */
 export async function isAdmin(): Promise<boolean> {
-  const t = adminToken();
-  if (!t) return false;
+  if (!adminToken()) return false;
   const c = await cookies();
-  return c.get(ADMIN_COOKIE)?.value === t;
+  return tokenMatches(c.get(ADMIN_COOKIE)?.value);
 }
 
 /** Constant-time compare to defeat trivial timing leaks on token check. */

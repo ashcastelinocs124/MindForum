@@ -524,7 +524,7 @@ export async function adminListRoomsWithActivity(opts: {
       r.created_at,
       COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '24 hours') AS msgs_24h,
       COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days')   AS msgs_7d,
-      COUNT(DISTINCT m.author_id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days') AS participants_7d,
+      COUNT(DISTINCT m.author_id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days' AND m.author_id != 'ai') AS participants_7d,
       MAX(m.created_at) AS last_message_at,
       (SELECT COUNT(*) FROM participants p WHERE p.room_id = r.id) AS total_participants,
       (SELECT COUNT(*) FROM room_files f WHERE f.room_id = r.id)  AS file_count

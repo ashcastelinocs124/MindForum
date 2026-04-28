@@ -25,8 +25,8 @@ function unauthorized(req: NextRequest): NextResponse {
 export async function GET(req: NextRequest) {
   if (!adminToken()) return NextResponse.json({ error: "admin_disabled" }, { status: 503 });
   const supplied = req.nextUrl.searchParams.get("token");
-  if (!tokenMatches(supplied)) return unauthorized(req);
-  return setCookieAndRedirect(req, supplied!);
+  if (typeof supplied !== "string" || !tokenMatches(supplied)) return unauthorized(req);
+  return setCookieAndRedirect(req, supplied);
 }
 
 export async function POST(req: NextRequest) {
