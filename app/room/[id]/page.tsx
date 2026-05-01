@@ -2,6 +2,19 @@
 import { useEffect, useRef, useState, use } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+  DEFAULT_PREFS,
+  type NotifyPrefs,
+  flashTitle,
+  loadPrefs,
+  matchesMention,
+  notificationPermission,
+  playPing,
+  requestNotificationPermission,
+  resetTitle,
+  savePrefs,
+  showToast,
+} from "@/lib/notify";
 
 type Participant = { id: string; name: string; email: string; joinedAt: number };
 type PublicFile = {
@@ -54,6 +67,27 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const [catchupData, setCatchupData] = useState<CatchupData | null>(null);
   const [catchupLoading, setCatchupLoading] = useState(false);
 
+  const [participantId, setParticipantId] = useState<string>("");
+  const [prefs, setPrefs] = useState<NotifyPrefs>(DEFAULT_PREFS);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [perm, setPerm] = useState<NotificationPermission | "unsupported">("default");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const nameRef = useRef(name);
+  const prefsRef = useRef(prefs);
+  const participantIdRef = useRef(participantId);
+  const messagesRef = useRef<Msg[]>([]);
+  useEffect(() => {
+    nameRef.current = name;
+  }, [name]);
+  useEffect(() => {
+    prefsRef.current = prefs;
+  }, [prefs]);
+  useEffect(() => {
+    participantIdRef.current = participantId;
+  }, [participantId]);
+
   // Prefill name + email from previous session so returning users don't retype.
   useEffect(() => {
     try {
@@ -96,6 +130,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
         localStorage.setItem("mindforum_name", trimmedName);
         localStorage.setItem("mindforum_email", trimmedEmail);
       } catch {}
+      setParticipantId(joinJson.participantId ?? "");
       setJoined(true);
 
       if (joinJson.catchupHint?.should) {
@@ -126,6 +161,50 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
     });
     es.addEventListener("message_added", (ev) => {
       const m: Msg = JSON.parse((ev as MessageEvent).data);
+
+      const prevLast = messagesRef.current[messagesRef.current.length - 1];
+      const myId = participantIdRef.current;
+      const myName = nameRef.current;
+      const p = prefsRef.current;
+      const isOwn = myId !== "" && m.authorId === myId;
+      const isAi = m.authorId === "ai";
+      const focused =
+        typeof document !== "undefined" && !document.hidden && document.hasFocus();
+
+      let trigger: { title: string; body: string } | null = null;
+      if (!isOwn && !focused) {
+        if (isAi) {
+          if (
+            p.aiReplies &&
+            prevLast &&
+            myId !== "" &&
+            prevLast.authorId === myId &&
+            m.content.trim().length > 0
+          ) {
+            trigger = { title: "AI replied", body: snippet(m.content) };
+          }
+        } else {
+          const match = matchesMention(m.content, myName, { mentionAll: p.mentionAll });
+          if (match?.kind === "direct") {
+            trigger = {
+              title: `${m.authorName} mentioned you`,
+              body: snippet(m.content),
+            };
+          } else if (match?.kind === "all") {
+            trigger = {
+              title: `${m.authorName} pinged the room`,
+              body: snippet(m.content),
+            };
+          }
+        }
+      }
+
+      if (trigger) {
+        setUnread((n) => n + 1);
+        if (p.toast) showToast(trigger.title, trigger.body);
+        if (p.sound) playPing();
+      }
+
       setState((s) => (s ? { ...s, messages: [...s.messages, m] } : s));
       if (m.kind === "brief") setBriefPending(false);
     });
@@ -178,6 +257,67 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "auto" });
   }, [state?.messages.length, lastMsgLen]);
+
+  // Keep messagesRef in sync so the SSE handler can inspect the previous message
+  // without re-subscribing the EventSource.
+  useEffect(() => {
+    messagesRef.current = state?.messages ?? [];
+  }, [state?.messages]);
+
+  // Load notification prefs + current permission state once per room.
+  useEffect(() => {
+    setPrefs(loadPrefs(id));
+    setPerm(notificationPermission());
+    setPrefsLoaded(true);
+  }, [id]);
+
+  // Persist prefs whenever they change — only after the initial load,
+  // so we don't clobber saved prefs with defaults on first render.
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    savePrefs(id, prefs);
+  }, [id, prefs, prefsLoaded]);
+
+  // Reset unread + title when the user looks at the tab again.
+  useEffect(() => {
+    function onVisible() {
+      if (!document.hidden && document.hasFocus()) {
+        setUnread(0);
+        resetTitle();
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, []);
+
+  // Flash the document title with the unread mention count.
+  useEffect(() => {
+    flashTitle(unread);
+  }, [unread]);
+
+  // Restore original title when leaving the room.
+  useEffect(() => {
+    return () => {
+      resetTitle();
+    };
+  }, []);
+
+  async function enableBrowserNotifications() {
+    const result = await requestNotificationPermission();
+    setPerm(result);
+    if (result === "granted") setPrefs((p) => ({ ...p, toast: true }));
+  }
+
+  function updatePref<K extends keyof NotifyPrefs>(key: K, value: NotifyPrefs[K]) {
+    setPrefs((p) => ({ ...p, [key]: value }));
+    if (key === "toast" && value === true && perm === "default") {
+      void enableBrowserNotifications();
+    }
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -376,15 +516,58 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           padding: "12px 20px",
           background: "var(--navy)",
           color: "white",
+          position: "relative",
         }}
       >
         <div>
           <div style={{ fontSize: 12, opacity: 0.75 }}>MindForum</div>
           <div style={{ fontFamily: "Montserrat, sans-serif", fontSize: 20 }}>{state.name}</div>
         </div>
-        <button onClick={copyLink} style={{ ...btnSecondary(), background: "var(--orange)" }}>
-          Copy link
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((o) => !o)}
+            aria-label="Notification settings"
+            aria-expanded={settingsOpen}
+            title="Notification settings"
+            style={{
+              ...btnSecondary(),
+              background: "rgba(255,255,255,0.12)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>Alerts</span>
+            {unread > 0 && (
+              <span
+                style={{
+                  background: "var(--orange)",
+                  color: "white",
+                  borderRadius: 999,
+                  padding: "1px 7px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  lineHeight: 1.4,
+                }}
+              >
+                {unread}
+              </span>
+            )}
+          </button>
+          <button onClick={copyLink} style={{ ...btnSecondary(), background: "var(--orange)" }}>
+            Copy link
+          </button>
+          {settingsOpen && (
+            <NotifySettingsPopover
+              prefs={prefs}
+              perm={perm}
+              onChange={updatePref}
+              onEnable={enableBrowserNotifications}
+              onClose={() => setSettingsOpen(false)}
+            />
+          )}
+        </div>
       </header>
 
       <div
@@ -463,18 +646,42 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Type a message. Start with @ai to ask the AI."
-                    style={{
-                      ...inp(),
-                      borderColor: aiMention ? "var(--orange)" : "var(--border)",
-                      boxShadow: aiMention ? "0 0 0 3px rgba(232,74,39,0.15)" : "none",
-                      outline: "none",
-                      transition: "border-color 120ms, box-shadow 120ms",
-                    }}
-                  />
+                  <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        ...inp(),
+                        flex: undefined,
+                        position: "absolute",
+                        inset: 0,
+                        pointerEvents: "none",
+                        whiteSpace: "pre",
+                        overflow: "hidden",
+                        borderColor: "transparent",
+                        background: "transparent",
+                        color: "var(--text)",
+                      }}
+                    >
+                      {renderInputMentions(draft)}
+                    </div>
+                    <input
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      placeholder="Type a message. Start with @ai to ask the AI."
+                      style={{
+                        ...inp(),
+                        width: "100%",
+                        borderColor: aiMention ? "var(--orange)" : "var(--border)",
+                        boxShadow: aiMention ? "0 0 0 3px rgba(232,74,39,0.15)" : "none",
+                        outline: "none",
+                        transition: "border-color 120ms, box-shadow 120ms",
+                        background: "transparent",
+                        color: draft ? "transparent" : undefined,
+                        caretColor: "var(--text)",
+                        position: "relative",
+                      }}
+                    />
+                  </div>
                   <button type="submit" style={btnPrimary()}>
                     Send
                   </button>
@@ -643,7 +850,7 @@ function MsgView({ m }: { m: Msg }) {
               {m.content}
             </ReactMarkdown>
           ) : (
-            renderWithAiMentions(m.content)
+            renderWithMentions(m.content)
           )
         ) : isAi ? (
           <span style={{ color: "var(--muted)", fontStyle: "italic" }}>thinking…</span>
@@ -769,19 +976,45 @@ const mdComponents = {
   ),
 };
 
-function renderWithAiMentions(text: string): React.ReactNode[] {
+// Color-only mention rendering for the live input mirror — no padding/background
+// so glyph widths stay aligned with the underlying transparent <input>.
+function renderInputMentions(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  const regex = /@ai\b/gi;
+  const regex = /@[\w-]+/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let i = 0;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index));
+    const isAi = /^@ai$/i.test(match[0]);
     parts.push(
       <span
-        key={`ai-${i++}`}
+        key={`im-${i++}`}
+        style={{ color: isAi ? "var(--orange)" : "var(--navy)", fontWeight: 600 }}
+      >
+        {match[0]}
+      </span>
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function renderWithMentions(text: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const regex = /@[\w-]+/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  let i = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const isAi = /^@ai$/i.test(match[0]);
+    parts.push(
+      <span
+        key={`m-${i++}`}
         style={{
-          background: "var(--orange)",
+          background: isAi ? "var(--orange)" : "var(--navy)",
           color: "white",
           padding: "1px 6px",
           borderRadius: 4,
@@ -1011,4 +1244,132 @@ function upsertById<T extends { id: string }>(arr: T[], item: T): T[] {
   const copy = arr.slice();
   copy[idx] = item;
   return copy;
+}
+
+function snippet(s: string, max = 140): string {
+  const oneLine = s.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
+}
+
+function NotifySettingsPopover({
+  prefs,
+  perm,
+  onChange,
+  onEnable,
+  onClose,
+}: {
+  prefs: NotifyPrefs;
+  perm: NotificationPermission | "unsupported";
+  onChange: <K extends keyof NotifyPrefs>(key: K, value: NotifyPrefs[K]) => void;
+  onEnable: () => void;
+  onClose: () => void;
+}) {
+  // Close on outside click.
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [onClose]);
+
+  const row: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 0",
+    fontSize: 14,
+    color: "var(--navy)",
+    cursor: "pointer",
+  };
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "absolute",
+        top: "calc(100% + 8px)",
+        right: 0,
+        zIndex: 40,
+        minWidth: 280,
+        background: "white",
+        color: "var(--navy)",
+        border: "1px solid var(--border)",
+        borderRadius: 10,
+        boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+        padding: 14,
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>Notifications</div>
+
+      {perm === "unsupported" && (
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 8px" }}>
+          Browser notifications aren&apos;t supported here. Sound and tab-title alerts still work.
+        </p>
+      )}
+      {perm === "default" && (
+        <button
+          type="button"
+          onClick={onEnable}
+          style={{
+            ...btnSecondary(),
+            background: "var(--orange)",
+            width: "100%",
+            marginBottom: 8,
+            padding: "8px 12px",
+            fontSize: 13,
+          }}
+        >
+          Enable browser notifications
+        </button>
+      )}
+      {perm === "denied" && (
+        <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 8px" }}>
+          Browser notifications are blocked for this site. Update your browser&apos;s site
+          settings to allow them.
+        </p>
+      )}
+
+      <label style={row}>
+        <input
+          type="checkbox"
+          checked={prefs.toast}
+          disabled={perm === "unsupported" || perm === "denied"}
+          onChange={(e) => onChange("toast", e.target.checked)}
+        />
+        <span>Browser notification on @mention</span>
+      </label>
+      <label style={row}>
+        <input
+          type="checkbox"
+          checked={prefs.sound}
+          onChange={(e) => onChange("sound", e.target.checked)}
+        />
+        <span>Sound on @mention</span>
+      </label>
+      <label style={row}>
+        <input
+          type="checkbox"
+          checked={prefs.mentionAll}
+          onChange={(e) => onChange("mentionAll", e.target.checked)}
+        />
+        <span>Notify on @all / @everyone</span>
+      </label>
+      <label style={row}>
+        <input
+          type="checkbox"
+          checked={prefs.aiReplies}
+          onChange={(e) => onChange("aiReplies", e.target.checked)}
+        />
+        <span>Notify when AI replies to me</span>
+      </label>
+
+      <p style={{ fontSize: 12, color: "var(--muted)", margin: "8px 0 0", lineHeight: 1.4 }}>
+        Alerts only fire when this tab is unfocused. The tab title shows an unread count
+        until you come back.
+      </p>
+    </div>
+  );
 }
