@@ -57,6 +57,10 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Monitor early MSBAi engagement and the new `ai-ready-illinois-scoping` faculty room; tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the `/admin/rooms` dashboard. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
 
+## Auto-deploy
+
+Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS and runs `scripts/deploy.sh` (pull → install → migrate → build → pm2 restart → localhost health check). Dedicated SSH key (`~/.ssh/mindforum_actions` locally) is locked to `command="bash /root/repos/mindforum/scripts/deploy.sh"` in VPS `~/.ssh/authorized_keys` — even if the GitHub `VPS_SSH_KEY` secret leaks, the key can only run the deploy. **If `scripts/deploy.sh` ever moves or gets renamed, update the `command=` prefix on the VPS at the same time** or the workflow silently fails with "No such file or directory". Bypass: regular `ssh vps` still works for ad-hoc shell access via `~/.ssh/id_ed25519`.
+
 ## Roadmap
 
 - [x] MVP from Ash's spec
@@ -78,6 +82,8 @@ Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2
 - [x] Catch-up modal now blocks "Got it" until summary lands (prevents fast-clickers dismissing before bullets render)
 - [x] Send MSBAi room invitations (faculty/staff list + corporate partners individually) — sent 2026-04-27
 - [x] Admin rooms dashboard `/admin/rooms` (sortable activity table, name filter, copy-link, cookie auth via existing `ADMIN_TOKEN`) — shipped 2026-04-28, [PR #6](https://github.com/gies-ai-experiments/MindForum/pull/6)
+- [x] `@`-mention notifications + live in-input mention coloring — [PR #8](https://github.com/gies-ai-experiments/MindForum/pull/8), shipped 2026-05-01
+- [x] GitHub Actions auto-deploy on push to `main` (restricted SSH key, idempotent `scripts/deploy.sh`, ~32s end-to-end) — shipped 2026-05-01
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `-xM9Qgfk4g`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
@@ -86,6 +92,6 @@ Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2
 
 ## Session Log
 
-### 2026-04-29
-- Completed: Evaluated whether MindForum's OpenAI gpt-5.4 backend could be swapped for an open-source LLM via the UIUC `chat.illinois.edu` proxy (`gpt-oss:120b`, also Qwen 2.5 VL 72B). Findings: (1) endpoint is *almost* OpenAI-compatible but path is `/api/chat-api/chat` and response shape is `{message, contexts}`, not OpenAI's `{choices[].message.content}` — pure base-URL swap on the OpenAI SDK won't work; would need a custom adapter. (2) `gpt-oss:120b` consistently 504s at exactly 60s on this endpoint right now (proxy timeout, model likely not loaded). (3) Qwen 2.5 VL 72B responds in ~19s but **fails the facilitator system prompt's instruction-following** — ignored the "orient → ask ONE question → STOP" pattern and jumped straight to a numbered lesson plan with invented themes. gpt-5.4 nailed the same prompt in 6.6s. Conclusion: not viable to migrate without significant prompt rewriting + custom response-shape adapter; quality gap on nuanced facilitation instructions is real. No code changes.
-- Next: Set OpenAI monthly spend cap on the MindForum key. Tail `/var/log/mindforum-refresh.log` to confirm the MSBAi KB refresh cron is running cleanly. Upload AI-Ready Illinois deck + Google doc to the new room and share with faculty list.
+### 2026-05-01
+- Completed: Pulled + deployed PR #8 (`@`-mention notifications + live coloring, by Ash). Stood up GitHub Actions auto-deploy: `scripts/deploy.sh` (pull → install → migrate → build → pm2 restart → localhost curl), dedicated `~/.ssh/mindforum_actions` ed25519 key locked to a forced `command=` on the VPS, three repo secrets (`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`). First push-triggered run failed (untracked bootstrap `deploy.sh` blocked the pull) — cleaned up and retried green; subsequent push of `AGENTS.md` confirmed ~32s end-to-end. Committed `AGENTS.md` (agent guardrails + memory lookup conventions).
+- Next: Set OpenAI monthly spend cap on the MindForum key. Tail `/var/log/mindforum-refresh.log` to confirm KB refresh cron health. Upload AI-Ready Illinois deck + Google doc to the new room.
