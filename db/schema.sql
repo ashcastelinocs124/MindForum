@@ -65,3 +65,15 @@ ALTER TABLE participants ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
 
 INSERT INTO schema_migrations (version) VALUES (2)
   ON CONFLICT (version) DO NOTHING;
+
+-- v3: rolling catch-up summary persisted per room.
+-- Avoids re-summarizing the entire conversation on every /catchup call;
+-- each call folds the delta (messages since summary_up_to_msg_id) into the
+-- existing summary + pinned facts.
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS rolling_summary       JSONB;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS pinned_facts          JSONB;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS summary_up_to_msg_id  TEXT;
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS summary_updated_at    TIMESTAMPTZ;
+
+INSERT INTO schema_migrations (version) VALUES (3)
+  ON CONFLICT (version) DO NOTHING;

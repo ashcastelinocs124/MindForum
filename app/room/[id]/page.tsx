@@ -46,9 +46,10 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const [briefPending, setBriefPending] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
 
+  type PinnedFacts = { names: string[]; decisions: string[]; files: string[] };
   type CatchupData =
     | { kind: "orientation"; files: { id: string; name: string }[] }
-    | { kind: "debrief" | "catchup"; bullets: string[] }
+    | { kind: "summary"; bullets: string[]; pinnedFacts: PinnedFacts }
     | { kind: "error" };
   const [catchupOpen, setCatchupOpen] = useState(false);
   const [catchupData, setCatchupData] = useState<CatchupData | null>(null);
@@ -99,11 +100,12 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
       setJoined(true);
 
       if (joinJson.catchupHint?.should) {
-        const since = joinJson.catchupHint.since;
         setCatchupOpen(true);
         setCatchupLoading(true);
-        const sinceQs = since != null ? `?since=${since}` : "";
-        fetch(`/api/room/${id}/catchup${sinceQs}`)
+        // The catchup endpoint now serves a single rolling summary for the room;
+        // the `since` hint still controls whether we show the modal but no longer
+        // shapes the response.
+        fetch(`/api/room/${id}/catchup`)
           .then((r) => (r.ok ? r.json() : Promise.reject(r)))
           .then((data: CatchupData) => setCatchupData(data))
           .catch(() => setCatchupData({ kind: "error" }))
@@ -303,8 +305,6 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             <h2 style={{ margin: 0, marginBottom: 12, fontFamily: "Montserrat, sans-serif" }}>
               {catchupData?.kind === "orientation"
                 ? `Welcome to ${state.name}`
-                : catchupData?.kind === "catchup"
-                ? "What you missed"
                 : "Catch up"}
             </h2>
 
@@ -334,8 +334,8 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
               </>
             )}
 
-            {!catchupLoading &&
-              (catchupData?.kind === "debrief" || catchupData?.kind === "catchup") && (
+            {!catchupLoading && catchupData?.kind === "summary" && (
+              <>
                 <ul style={{ paddingLeft: 20 }}>
                   {catchupData.bullets.map((b, i) => (
                     <li key={i} style={{ marginBottom: 8 }}>
@@ -346,7 +346,9 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                     <li>Nothing notable yet — scroll up to read along.</li>
                   )}
                 </ul>
-              )}
+                <PinnedFactsBlock facts={catchupData.pinnedFacts} />
+              </>
+            )}
 
             {!catchupLoading && catchupData?.kind === "error" && (
               <p>Couldn't generate a summary — scroll up to see the conversation.</p>
@@ -1011,4 +1013,48 @@ function upsertById<T extends { id: string }>(arr: T[], item: T): T[] {
   const copy = arr.slice();
   copy[idx] = item;
   return copy;
+}
+
+function PinnedFactsBlock({
+  facts,
+}: {
+  facts: { names: string[]; decisions: string[]; files: string[] };
+}) {
+  const hasAny =
+    facts.names.length > 0 || facts.decisions.length > 0 || facts.files.length > 0;
+  if (!hasAny) return null;
+  const row = (label: string, items: string[]) =>
+    items.length === 0 ? null : (
+      <div style={{ marginTop: 6, fontSize: 13 }}>
+        <span style={{ color: "var(--muted)", fontWeight: 600 }}>{label}: </span>
+        {items.join(", ")}
+      </div>
+    );
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: "10px 12px",
+        background: "rgba(19,41,75,0.04)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          color: "var(--muted)",
+          fontWeight: 700,
+          marginBottom: 4,
+        }}
+      >
+        Key references
+      </div>
+      {row("People", facts.names)}
+      {row("Decisions", facts.decisions)}
+      {row("Files", facts.files)}
+    </div>
+  );
 }

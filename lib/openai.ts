@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { Message, RoomFile } from "./store";
+import type { Message, PinnedFacts, RoomFile } from "./store";
 
 const MODEL_CHAT = process.env.OPENAI_MODEL || "gpt-5.4";
 const MODEL_BRIEF = process.env.OPENAI_MODEL_BRIEF || MODEL_CHAT;
@@ -123,42 +123,115 @@ export async function generateBrief(
   return JSON.parse(raw) as Brief;
 }
 
-const MAX_CATCHUP_HISTORY = 200;
+const ROLLING_SUMMARY_RECENCY = 15;
 
-export async function generateCatchupBullets(
-  messages: Message[],
-  files: RoomFile[],
-  systemPrompt: string,
-  mode: "debrief" | "catchup"
-): Promise<string[]> {
-  const recent = messages.slice(-MAX_CATCHUP_HISTORY);
-  const framing =
-    mode === "debrief"
-      ? "Summarize the entire room conversation so far for a newcomer joining now. Capture topics, decisions, open questions, and notable file references. 5-8 bullets."
-      : "Summarize what has happened in this room since the participant last left. Focus on what's new — new topics, decisions, questions, or files. 5-8 bullets.";
+function formatMsgsForPrompt(msgs: Message[]): string {
+  if (msgs.length === 0) return "(none)";
+  return msgs
+    .map((m) => {
+      const who = m.authorId === "ai" ? "AI" : m.authorName;
+      return `${who}: ${m.content.replace(/\s+/g, " ").trim()}`;
+    })
+    .join("\n");
+}
 
-  const system = `You produce catch-up bullets for a MindForum room. ${framing} Each bullet is one short sentence, concrete and grounded in the actual conversation. Do not invent participants or events. If a bullet category has nothing real to say, drop it rather than padding.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}`;
+export type RollingSummaryUpdate = {
+  bullets: string[];
+  pinnedFacts: PinnedFacts;
+};
+
+/**
+ * Fold a delta of new messages into the prior rolling summary and pinned facts.
+ *
+ * - `priorBullets` / `priorPinnedFacts` may be empty for the cold-start call.
+ * - `recentMessages` is a verbatim recency window (last K chat messages) so the
+ *   model sees current phrasing — counters drift from summarizing-a-summary.
+ * - `deltaMessages` are the chat messages strictly after the last
+ *   `summary_up_to_msg_id` (i.e. what's new since we last summarized).
+ *
+ * File contents are intentionally NOT included — pinned_facts.files preserves
+ * names so cost stays O(delta + recency window) regardless of file size.
+ */
+export async function updateRollingSummary(args: {
+  priorBullets: string[];
+  priorPinnedFacts: PinnedFacts;
+  recentMessages: Message[];
+  deltaMessages: Message[];
+  fileNames: string[];
+  systemPrompt: string;
+}): Promise<RollingSummaryUpdate> {
+  const fileList =
+    args.fileNames.length > 0
+      ? `\n\nFiles shared in this room (names only — not contents):\n${args.fileNames.map((n) => `- ${n}`).join("\n")}`
+      : "";
+
+  const system = `You maintain a rolling catch-up summary for a MindForum brainstorming room. A late joiner reads this summary to get oriented.
+
+Goals, in order:
+1. Keep the summary tight and concrete (5-8 bullets, one short sentence each).
+2. Maintain a "pinned facts" list: people who participated, decisions reached, and files referenced. Pinned items must NOT be paraphrased away in future rounds — preserve them across updates.
+3. Fold new (delta) messages into the prior summary. Drop bullets that are now stale; merge near-duplicates; promote anything important to a pinned fact.
+4. Never invent participants, decisions, or files. If something was just opinion or a question, do not call it a decision.
+5. If the prior summary or pinned facts contradict what later messages say, prefer the latest messages.${roomGuidanceBlock(args.systemPrompt)}${fileList}`;
+
+  const user = `## Prior summary bullets
+${args.priorBullets.length ? args.priorBullets.map((b) => `- ${b}`).join("\n") : "(none — this is the first summary)"}
+
+## Prior pinned facts
+- names: ${args.priorPinnedFacts.names.join(", ") || "(none)"}
+- decisions: ${args.priorPinnedFacts.decisions.join("; ") || "(none)"}
+- files: ${args.priorPinnedFacts.files.join(", ") || "(none)"}
+
+## Recency window (last ${args.recentMessages.length} messages, verbatim)
+${formatMsgsForPrompt(args.recentMessages)}
+
+## Delta — new messages since last summary (${args.deltaMessages.length} messages)
+${formatMsgsForPrompt(args.deltaMessages)}
+
+Produce the updated rolling summary as JSON.`;
 
   const res = await client().chat.completions.create({
     model: MODEL_CHAT,
     response_format: {
       type: "json_schema",
       json_schema: {
-        name: "CatchupBullets",
+        name: "RollingSummary",
         strict: true,
         schema: {
           type: "object",
           additionalProperties: false,
           properties: {
             bullets: { type: "array", items: { type: "string" } },
+            pinnedFacts: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                names: { type: "array", items: { type: "string" } },
+                decisions: { type: "array", items: { type: "string" } },
+                files: { type: "array", items: { type: "string" } },
+              },
+              required: ["names", "decisions", "files"],
+            },
           },
-          required: ["bullets"],
+          required: ["bullets", "pinnedFacts"],
         },
       },
     },
-    messages: [{ role: "system", content: system }, ...historyBlock(recent)],
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
   });
   const raw = res.choices[0]?.message?.content ?? "{}";
-  const parsed = JSON.parse(raw) as { bullets: string[] };
-  return parsed.bullets;
+  const parsed = JSON.parse(raw) as RollingSummaryUpdate;
+  return {
+    bullets: parsed.bullets ?? [],
+    pinnedFacts: {
+      names: parsed.pinnedFacts?.names ?? [],
+      decisions: parsed.pinnedFacts?.decisions ?? [],
+      files: parsed.pinnedFacts?.files ?? [],
+    },
+  };
 }
+
+export const ROLLING_SUMMARY_RECENCY_WINDOW = ROLLING_SUMMARY_RECENCY;

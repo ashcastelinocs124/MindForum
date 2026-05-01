@@ -427,6 +427,202 @@ export async function getRecentMessages(roomId: string, limit: number): Promise<
   return rows.map(toMessage);
 }
 
+// -------- Rolling catch-up summary
+//
+// One global summary per room (kind: "summary"). Updates on /catchup are lazy
+// and incremental: we feed the prior summary + pinned facts + the last K raw
+// messages + only the *delta* messages (those after summary_up_to_msg_id)
+// back to the model and persist the new summary.
+
+export type PinnedFacts = {
+  names: string[];
+  decisions: string[];
+  files: string[];
+};
+
+export type RoomSummary = {
+  bullets: string[];
+  pinnedFacts: PinnedFacts;
+  upToMsgId: string | null;
+  updatedAt: number | null;
+};
+
+const EMPTY_FACTS: PinnedFacts = { names: [], decisions: [], files: [] };
+
+export async function getRoomSummary(roomId: string): Promise<RoomSummary | null> {
+  const { rows, rowCount } = await query<{
+    rolling_summary: { bullets?: string[] } | null;
+    pinned_facts: PinnedFacts | null;
+    summary_up_to_msg_id: string | null;
+    summary_updated_at: Date | null;
+  }>(
+    `SELECT rolling_summary, pinned_facts, summary_up_to_msg_id, summary_updated_at
+     FROM rooms WHERE id = $1`,
+    [roomId]
+  );
+  if (!rowCount) return null;
+  const r = rows[0];
+  return {
+    bullets: r.rolling_summary?.bullets ?? [],
+    pinnedFacts: r.pinned_facts ?? EMPTY_FACTS,
+    upToMsgId: r.summary_up_to_msg_id,
+    updatedAt: r.summary_updated_at ? r.summary_updated_at.getTime() : null,
+  };
+}
+
+/**
+ * Persist a freshly-computed rolling summary. Optimistic lock: only writes if
+ * `summary_up_to_msg_id` still matches `expectedUpToMsgId` (the value we read
+ * before computing). A racing writer that already advanced the column wins;
+ * we return false so the caller can re-read and serve the latest summary.
+ *
+ * Note on contention cost: under a race, both writers will have already paid
+ * for one OpenAI call — only one persists. The wasted call is bounded
+ * (one per loser) and self-limiting: subsequent /catchup hits will be cache
+ * reads. Acceptable given /catchup's per-IP rate limit (5/min).
+ */
+export async function setRoomSummary(
+  roomId: string,
+  payload: { bullets: string[]; pinnedFacts: PinnedFacts; newUpToMsgId: string },
+  expectedUpToMsgId: string | null
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE rooms
+       SET rolling_summary      = $2,
+           pinned_facts         = $3,
+           summary_up_to_msg_id = $4,
+           summary_updated_at   = NOW()
+     WHERE id = $1
+       AND summary_up_to_msg_id IS NOT DISTINCT FROM $5`,
+    [
+      roomId,
+      JSON.stringify({ bullets: payload.bullets }),
+      JSON.stringify(payload.pinnedFacts),
+      payload.newUpToMsgId,
+      expectedUpToMsgId,
+    ]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Chat messages strictly after the given message id, chronological. */
+export async function getChatMessagesAfter(
+  roomId: string,
+  afterMsgId: string | null
+): Promise<Message[]> {
+  if (afterMsgId == null) {
+    const { rows } = await query<{
+      id: string;
+      room_id: string;
+      author_id: string;
+      author_name: string;
+      content: string;
+      kind: string;
+      created_at: Date;
+    }>(
+      `SELECT id, room_id, author_id, author_name, content, kind, created_at
+       FROM messages
+       WHERE room_id = $1 AND kind = 'chat'
+       ORDER BY created_at ASC, id ASC`,
+      [roomId]
+    );
+    return rows.map(toMessage);
+  }
+  const { rows } = await query<{
+    id: string;
+    room_id: string;
+    author_id: string;
+    author_name: string;
+    content: string;
+    kind: string;
+    created_at: Date;
+  }>(
+    `WITH anchor AS (
+       SELECT created_at, id FROM messages WHERE id = $2
+     )
+     SELECT m.id, m.room_id, m.author_id, m.author_name, m.content, m.kind, m.created_at
+     FROM messages m, anchor a
+     WHERE m.room_id = $1
+       AND m.kind = 'chat'
+       AND (m.created_at, m.id) > (a.created_at, a.id)
+     ORDER BY m.created_at ASC, m.id ASC`,
+    [roomId, afterMsgId]
+  );
+  return rows.map(toMessage);
+}
+
+/**
+ * Targeted lookup for the catchup route — returns just the columns the route
+ * needs without pulling all messages/files like getRoom() does. Cache-hit
+ * /catchup calls should never load the full conversation.
+ */
+export async function getRoomCatchupContext(id: string): Promise<{
+  name: string;
+  systemPrompt: string;
+  chatCount: number;
+  selectedFileNames: string[];
+} | null> {
+  const client = await pool().connect();
+  try {
+    const roomQ = await client.query<{
+      name: string;
+      system_prompt: string;
+      chat_count: string;
+    }>(
+      `SELECT r.name, r.system_prompt,
+              (SELECT COUNT(*)::text FROM messages m
+                 WHERE m.room_id = r.id AND m.kind = 'chat') AS chat_count
+       FROM rooms r WHERE r.id = $1`,
+      [id]
+    );
+    if (roomQ.rowCount === 0) return null;
+    const r = roomQ.rows[0];
+
+    const filesQ = await client.query<{ name: string }>(
+      `SELECT name FROM room_files
+       WHERE room_id = $1 AND selected = TRUE
+       ORDER BY uploaded_at ASC`,
+      [id]
+    );
+
+    return {
+      name: r.name,
+      systemPrompt: r.system_prompt,
+      chatCount: parseInt(r.chat_count, 10),
+      selectedFileNames: filesQ.rows.map((f) => f.name),
+    };
+  } finally {
+    client.release();
+  }
+}
+
+/** Last N chat messages, chronological. Used as a "recency window" we always
+ * include verbatim alongside the rolling summary. */
+export async function getRecentChatMessages(
+  roomId: string,
+  limit: number
+): Promise<Message[]> {
+  const { rows } = await query<{
+    id: string;
+    room_id: string;
+    author_id: string;
+    author_name: string;
+    content: string;
+    kind: string;
+    created_at: Date;
+  }>(
+    `SELECT * FROM (
+       SELECT id, room_id, author_id, author_name, content, kind, created_at
+       FROM messages
+       WHERE room_id = $1 AND kind = 'chat'
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2
+     ) t ORDER BY created_at ASC, id ASC`,
+    [roomId, limit]
+  );
+  return rows.map(toMessage);
+}
+
 // -------- Snapshot for SSE clients
 
 /**
