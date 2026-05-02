@@ -77,3 +77,28 @@ ALTER TABLE rooms ADD COLUMN IF NOT EXISTS summary_updated_at    TIMESTAMPTZ;
 
 INSERT INTO schema_migrations (version) VALUES (3)
   ON CONFLICT (version) DO NOTHING;
+
+-- v4: emoji reactions on messages.
+-- Composite PK enforces "one reaction of each emoji per (message, participant)".
+-- A participant can react with multiple distinct emojis on the same message.
+CREATE TABLE IF NOT EXISTS message_reactions (
+  message_id      TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  participant_id  TEXT NOT NULL,
+  emoji           TEXT NOT NULL,
+  reacted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (message_id, participant_id, emoji)
+);
+
+CREATE INDEX IF NOT EXISTS message_reactions_msg_idx
+  ON message_reactions (message_id);
+
+INSERT INTO schema_migrations (version) VALUES (4)
+  ON CONFLICT (version) DO NOTHING;
+
+-- v5: track edits on chat messages so the UI can show "(edited)".
+-- AI streaming reuses updateMessageContent without setting edited_at; only
+-- explicit author edits stamp this column.
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
+
+INSERT INTO schema_migrations (version) VALUES (5)
+  ON CONFLICT (version) DO NOTHING;

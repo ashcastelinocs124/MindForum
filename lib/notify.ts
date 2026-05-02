@@ -6,6 +6,7 @@ export type NotifyPrefs = {
   sound: boolean;
   mentionAll: boolean;
   aiReplies: boolean;
+  reactions: boolean;
 };
 
 export const DEFAULT_PREFS: NotifyPrefs = {
@@ -13,6 +14,7 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   sound: false,
   mentionAll: true,
   aiReplies: false,
+  reactions: false,
 };
 
 const PREFS_KEY = (roomId: string) => `mindforum_notify_prefs_${roomId}`;

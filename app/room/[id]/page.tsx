@@ -26,6 +26,7 @@ type PublicFile = {
   uploadedById: string;
   uploadedAt: number;
 };
+type Reaction = { emoji: string; count: number; reacterIds: string[] };
 type Msg = {
   id: string;
   roomId: string;
@@ -34,6 +35,8 @@ type Msg = {
   content: string;
   createdAt: number;
   kind?: "chat" | "brief";
+  reactions?: Reaction[];
+  editedAt?: number | null;
 };
 type Snapshot = {
   id: string;
@@ -227,15 +230,24 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
       );
     });
     es.addEventListener("message_updated", (ev) => {
-      const { id: mid, content } = JSON.parse((ev as MessageEvent).data) as {
+      const { id: mid, content, editedAt } = JSON.parse((ev as MessageEvent).data) as {
         id: string;
         content: string;
+        editedAt?: number;
       };
       setState((s) =>
         s
           ? {
               ...s,
-              messages: s.messages.map((m) => (m.id === mid ? { ...m, content } : m)),
+              messages: s.messages.map((m) =>
+                m.id === mid
+                  ? {
+                      ...m,
+                      content,
+                      ...(editedAt !== undefined ? { editedAt } : {}),
+                    }
+                  : m
+              ),
             }
           : s
       );
@@ -243,6 +255,58 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
     es.addEventListener("file_added", (ev) => {
       const f: PublicFile = JSON.parse((ev as MessageEvent).data);
       setState((s) => (s ? { ...s, files: upsertById(s.files, f) } : s));
+    });
+    es.addEventListener("reaction_changed", (ev) => {
+      const { messageId, reactions } = JSON.parse((ev as MessageEvent).data) as {
+        messageId: string;
+        reactions: Reaction[];
+      };
+
+      const myId = participantIdRef.current;
+      const p = prefsRef.current;
+      const focused =
+        typeof document !== "undefined" && !document.hidden && document.hasFocus();
+      const target = messagesRef.current.find((mm) => mm.id === messageId);
+
+      // Reaction notify: someone reacted to MY message with an emoji that's
+      // new (not in the prior reacterIds list) and the new reacter isn't me.
+      if (
+        p.reactions &&
+        !focused &&
+        target &&
+        myId !== "" &&
+        target.authorId === myId
+      ) {
+        const prevByEmoji = new Map(
+          (target.reactions ?? []).map((r) => [r.emoji, new Set(r.reacterIds)])
+        );
+        let added: { emoji: string; reacter: string } | null = null;
+        for (const r of reactions) {
+          const prev = prevByEmoji.get(r.emoji) ?? new Set<string>();
+          const newReacter = r.reacterIds.find((rid) => rid !== myId && !prev.has(rid));
+          if (newReacter) {
+            added = { emoji: r.emoji, reacter: newReacter };
+            break;
+          }
+        }
+        if (added) {
+          setUnread((n) => n + 1);
+          if (p.toast)
+            showToast("New reaction", `${added.emoji} on your message`);
+          if (p.sound) playPing();
+        }
+      }
+
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.id === messageId ? { ...m, reactions } : m
+              ),
+            }
+          : s
+      );
     });
     es.addEventListener("file_selection_changed", (ev) => {
       const { selectedFileIds } = JSON.parse((ev as MessageEvent).data);
@@ -319,6 +383,13 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
     if (key === "toast" && value === true && perm === "default") {
       void enableBrowserNotifications();
     }
+  }
+
+  function quoteReply(m: Msg) {
+    const snip = m.content.replace(/\s+/g, " ").trim().slice(0, 140);
+    const author = m.authorId === "ai" ? "AI" : m.authorName;
+    const block = `> ${author}: ${snip}\n\n`;
+    setDraft((d) => block + d);
   }
 
   async function send(e: React.FormEvent) {
@@ -607,7 +678,13 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
               </p>
             )}
             {state.messages.map((m) => (
-              <MsgView key={m.id} m={m} />
+              <MsgView
+                key={m.id}
+                m={m}
+                roomId={id}
+                viewerId={participantId}
+                onQuote={quoteReply}
+              />
             ))}
             {briefPending && (
               <div style={{ color: "var(--muted)", fontStyle: "italic", padding: "8px 0" }}>
@@ -618,6 +695,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           </div>
           {(() => {
             const aiMention = /^\s*@ai\b/i.test(draft);
+            const pills = detectMentionPills(draft, state.participants, participantId);
             return (
               <form
                 onSubmit={send}
@@ -628,23 +706,11 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                   borderTop: "1px solid var(--border)",
                 }}
               >
-                {aiMention && (
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignSelf: "flex-start",
-                      alignItems: "center",
-                      gap: 6,
-                      background: "var(--orange)",
-                      color: "white",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      padding: "3px 8px",
-                      borderRadius: 999,
-                    }}
-                  >
-                    <span style={{ width: 6, height: 6, borderRadius: 6, background: "white" }} />
-                    AI will respond
+                {pills.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {pills.map((p, i) => (
+                      <MentionPill key={`${p.kind}-${p.label}-${i}`} pill={p} />
+                    ))}
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
@@ -820,12 +886,92 @@ function GuidanceCard({ text }: { text: string }) {
   );
 }
 
-function MsgView({ m }: { m: Msg }) {
+function MsgView({
+  m,
+  roomId,
+  viewerId,
+  onQuote,
+}: {
+  m: Msg;
+  roomId?: string;
+  viewerId?: string;
+  onQuote?: (m: Msg) => void;
+}) {
   if (m.kind === "brief") return <BriefView m={m} />;
   const isAi = m.authorId === "ai";
+
+  const [hover, setHover] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editErr, setEditErr] = useState("");
+
+  const canInteract = Boolean(roomId && viewerId && m.content);
+  const isMine = !isAi && viewerId !== undefined && viewerId !== "" && m.authorId === viewerId;
+  const canEdit = Boolean(isMine && roomId && m.content);
+
+  async function react(emoji: string) {
+    if (!roomId || !viewerId) return;
+    setPickerOpen(false);
+    try {
+      await fetch(`/api/room/${roomId}/message/${m.id}/react`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ emoji }),
+      });
+    } catch {
+      /* SSE will eventually reconcile */
+    }
+  }
+
+  function startEdit() {
+    setEditDraft(m.content);
+    setEditErr("");
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setEditDraft("");
+    setEditErr("");
+  }
+
+  async function saveEdit() {
+    const next = editDraft.trim();
+    if (!next || !roomId) return;
+    if (next === m.content) {
+      cancelEdit();
+      return;
+    }
+    setEditBusy(true);
+    setEditErr("");
+    try {
+      const res = await fetch(`/api/room/${roomId}/message/${m.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content: next }),
+      });
+      if (!res.ok) {
+        setEditErr(res.status === 403 ? "You can only edit your own messages." : "Edit failed.");
+        return;
+      }
+      setEditing(false);
+      setEditDraft("");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   return (
     <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => {
+        setHover(false);
+        setPickerOpen(false);
+      }}
       style={{
+        position: "relative",
         padding: "10px 12px",
         margin: "8px 0",
         background: "var(--card)",
@@ -834,30 +980,310 @@ function MsgView({ m }: { m: Msg }) {
         borderLeft: isAi ? "3px solid var(--orange)" : "3px solid var(--navy)",
       }}
     >
-      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>{m.authorName}</div>
-      <div
-        style={
-          isAi
-            ? { /* markdown handles whitespace */ }
-            : { whiteSpace: "pre-wrap" }
-        }
-        className={isAi ? "msg-md" : undefined}
-      >
-        {m.content ? (
-          isAi ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={mdComponents}
-            >
-              {m.content}
-            </ReactMarkdown>
-          ) : (
-            renderWithMentions(m.content)
-          )
-        ) : isAi ? (
-          <span style={{ color: "var(--muted)", fontStyle: "italic" }}>thinking…</span>
+      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 4 }}>
+        <span style={{ fontWeight: 600 }}>{m.authorName}</span>
+        <span
+          style={{ marginLeft: 6 }}
+          title={new Date(m.createdAt).toLocaleString()}
+        >
+          {formatMsgTime(m.createdAt)}
+        </span>
+        {m.editedAt ? (
+          <span
+            style={{ marginLeft: 6, fontSize: 11, fontStyle: "italic" }}
+            title={`Edited ${new Date(m.editedAt).toLocaleString()}`}
+          >
+            (edited)
+          </span>
         ) : null}
       </div>
+
+      {editing ? (
+        <div style={{ display: "grid", gap: 6 }}>
+          <textarea
+            value={editDraft}
+            onChange={(e) => setEditDraft(e.target.value)}
+            rows={Math.min(8, Math.max(2, editDraft.split("\n").length))}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelEdit();
+              }
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                void saveEdit();
+              }
+            }}
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              fontFamily: "inherit",
+              fontSize: 14,
+              resize: "vertical",
+            }}
+          />
+          {editErr && (
+            <div style={{ color: "crimson", fontSize: 12 }}>{editErr}</div>
+          )}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={editBusy || !editDraft.trim()}
+              style={{
+                ...btnPrimary(),
+                padding: "6px 12px",
+                fontSize: 13,
+                opacity: editBusy ? 0.6 : 1,
+              }}
+            >
+              {editBusy ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={cancelEdit}
+              disabled={editBusy}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border)",
+                color: "var(--text)",
+                borderRadius: 8,
+                padding: "6px 12px",
+                fontSize: 13,
+              }}
+            >
+              Cancel
+            </button>
+            <span style={{ color: "var(--muted)", fontSize: 11, alignSelf: "center" }}>
+              ⌘/Ctrl+Enter to save · Esc to cancel
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={
+            isAi
+              ? { /* markdown handles whitespace */ }
+              : { whiteSpace: "pre-wrap" }
+          }
+          className={isAi ? "msg-md" : undefined}
+        >
+          {m.content ? (
+            isAi ? (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={mdComponents}
+              >
+                {m.content}
+              </ReactMarkdown>
+            ) : (
+              renderWithMentions(m.content)
+            )
+          ) : isAi ? (
+            <span style={{ color: "var(--muted)", fontStyle: "italic" }}>thinking…</span>
+          ) : null}
+        </div>
+      )}
+
+      {!editing && m.reactions && m.reactions.length > 0 && (
+        <ReactionChips reactions={m.reactions} viewerId={viewerId ?? ""} onToggle={react} />
+      )}
+
+      {hover && !editing && canInteract && (
+        <MessageToolbar
+          onReact={react}
+          onQuote={onQuote ? () => onQuote(m) : undefined}
+          onEdit={canEdit ? startEdit : undefined}
+          pickerOpen={pickerOpen}
+          togglePicker={() => setPickerOpen((o) => !o)}
+        />
+      )}
+    </div>
+  );
+}
+
+const QUICK_REACTIONS = ["👍", "❤️", "😆", "😮"];
+const PICKER_EMOJIS = [
+  "👍", "❤️", "😆", "😮", "🎉",
+  "🔥", "🚀", "👏", "💡", "✅",
+  "❌", "❓", "🤔", "🙏", "⭐",
+  "😊", "😢", "😡", "👀", "🙌",
+];
+
+function MessageToolbar({
+  onReact,
+  onQuote,
+  onEdit,
+  pickerOpen,
+  togglePicker,
+}: {
+  onReact: (emoji: string) => void;
+  onQuote?: () => void;
+  onEdit?: () => void;
+  pickerOpen: boolean;
+  togglePicker: () => void;
+}) {
+  const btn: React.CSSProperties = {
+    background: "transparent",
+    border: "none",
+    padding: "4px 6px",
+    fontSize: 16,
+    lineHeight: 1,
+    borderRadius: 4,
+    color: "var(--text)",
+  };
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: -16,
+        right: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 2,
+        background: "var(--card)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        padding: "2px 4px",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        zIndex: 5,
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {QUICK_REACTIONS.map((e) => (
+        <button
+          key={e}
+          type="button"
+          onClick={() => onReact(e)}
+          style={btn}
+          aria-label={`React with ${e}`}
+          title={`React with ${e}`}
+        >
+          {e}
+        </button>
+      ))}
+      {onEdit ? (
+        // Own messages: the prominent middle slot is the edit pencil
+        // (you don't typically need the picker on your own message).
+        <button
+          type="button"
+          onClick={onEdit}
+          style={{ ...btn, fontSize: 16 }}
+          aria-label="Edit message"
+          title="Edit message"
+        >
+          ✏️
+        </button>
+      ) : (
+        // Others' messages: keep the "more reactions" picker in this slot.
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={togglePicker}
+            style={{ ...btn, fontSize: 14, fontWeight: 700 }}
+            aria-label="More reactions"
+            title="More reactions"
+            aria-expanded={pickerOpen}
+          >
+            +
+          </button>
+          {pickerOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                right: 0,
+                background: "var(--card)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: 6,
+                boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+                display: "grid",
+                gridTemplateColumns: "repeat(5, 28px)",
+                gap: 2,
+                zIndex: 6,
+              }}
+            >
+              {PICKER_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => onReact(e)}
+                  style={{ ...btn, padding: 4 }}
+                  aria-label={`React with ${e}`}
+                  title={`React with ${e}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {onQuote && (
+        <button
+          type="button"
+          onClick={onQuote}
+          style={{ ...btn, fontSize: 14, color: "var(--muted)" }}
+          aria-label="Quote reply"
+          title="Quote reply"
+        >
+          ❝
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ReactionChips({
+  reactions,
+  viewerId,
+  onToggle,
+}: {
+  reactions: Reaction[];
+  viewerId: string;
+  onToggle: (emoji: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 4,
+        marginTop: 6,
+      }}
+    >
+      {reactions.map((r) => {
+        const mine = viewerId !== "" && r.reacterIds.includes(viewerId);
+        return (
+          <button
+            key={r.emoji}
+            type="button"
+            onClick={() => onToggle(r.emoji)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "1px 8px",
+              borderRadius: 999,
+              fontSize: 12,
+              lineHeight: "20px",
+              border: `1px solid ${mine ? "var(--navy)" : "var(--border)"}`,
+              background: mine ? "rgba(19,41,75,0.08)" : "var(--card)",
+              color: "var(--text)",
+              cursor: "pointer",
+            }}
+            aria-pressed={mine}
+            title={mine ? "Remove your reaction" : "Add your reaction"}
+          >
+            <span>{r.emoji}</span>
+            <span style={{ fontWeight: 600, fontSize: 11 }}>{r.count}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -977,6 +1403,78 @@ const mdComponents = {
     </td>
   ),
 };
+
+type Pill = { kind: "ai" | "all" | "user"; label: string };
+
+function escapeRegexLocal(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function nameTokensLocal(fullName: string): string[] {
+  const trimmed = fullName.trim();
+  if (!trimmed) return [];
+  const out = new Set<string>([trimmed]);
+  const firstRaw = trimmed.split(/\s+/)[0] ?? "";
+  const first = firstRaw.replace(/[.,;:!?]+$/, "");
+  if (first && first !== trimmed && first.length >= 2) out.add(first);
+  return [...out];
+}
+
+/**
+ * Build the set of "X will be notified" pills shown above the message input.
+ * Skips the viewer themselves; dedupes per participant; matches @ai / @all /
+ * @everyone with their own pill kinds.
+ */
+function detectMentionPills(
+  draft: string,
+  participants: Participant[],
+  viewerId: string
+): Pill[] {
+  if (!draft) return [];
+  const pills: Pill[] = [];
+  if (/^\s*@ai\b/i.test(draft)) {
+    pills.push({ kind: "ai", label: "AI will respond" });
+  }
+  if (/@(all|everyone)\b/i.test(draft)) {
+    pills.push({ kind: "all", label: "Everyone will be notified" });
+  }
+  const seen = new Set<string>();
+  for (const p of participants) {
+    if (p.id === viewerId) continue;
+    if (seen.has(p.id)) continue;
+    for (const tok of nameTokensLocal(p.name)) {
+      if (new RegExp(`@${escapeRegexLocal(tok)}\\b`, "i").test(draft)) {
+        pills.push({ kind: "user", label: `${p.name} will be notified` });
+        seen.add(p.id);
+        break;
+      }
+    }
+  }
+  return pills;
+}
+
+function MentionPill({ pill }: { pill: Pill }) {
+  const bg = pill.kind === "ai" ? "var(--orange)" : "var(--navy)";
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignSelf: "flex-start",
+        alignItems: "center",
+        gap: 6,
+        background: bg,
+        color: "white",
+        fontSize: 12,
+        fontWeight: 600,
+        padding: "3px 8px",
+        borderRadius: 999,
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: 6, background: "white" }} />
+      {pill.label}
+    </div>
+  );
+}
 
 // Color-only mention rendering for the live input mirror — no padding/background
 // so glyph widths stay aligned with the underlying transparent <input>.
@@ -1297,6 +1795,36 @@ function snippet(s: string, max = 140): string {
   return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
 }
 
+/**
+ * Render a chat timestamp in the same shorthand pattern as Slack/Discord:
+ *  - same calendar day → "3:45 PM"
+ *  - prior calendar day → "Yesterday 3:45 PM"
+ *  - same year         → "Apr 28, 3:45 PM"
+ *  - older             → "Apr 28, 2025"
+ * Full date stays available via the parent element's `title` attribute.
+ */
+function formatMsgTime(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (sameDay) return time;
+  if (isYesterday) return `Yesterday ${time}`;
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
 function NotifySettingsPopover({
   prefs,
   perm,
@@ -1410,6 +1938,14 @@ function NotifySettingsPopover({
           onChange={(e) => onChange("aiReplies", e.target.checked)}
         />
         <span>Notify when AI replies to me</span>
+      </label>
+      <label style={row}>
+        <input
+          type="checkbox"
+          checked={prefs.reactions}
+          onChange={(e) => onChange("reactions", e.target.checked)}
+        />
+        <span>Notify on reactions to my messages</span>
       </label>
 
       <p style={{ fontSize: 12, color: "var(--muted)", margin: "8px 0 0", lineHeight: 1.4 }}>
