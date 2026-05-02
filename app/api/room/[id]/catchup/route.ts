@@ -36,12 +36,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const expectedUpToMsgId = stored?.upToMsgId ?? null;
   const delta = await getChatMessagesAfter(id, expectedUpToMsgId);
 
-  // Cache hit: prior summary still covers everything. No model call, no full-room load.
-  if (delta.length === 0 && stored && stored.bullets.length > 0) {
+  // Cache hit (or no new messages at all): return whatever we have stored.
+  // This also guards against delta[delta.length - 1] throwing on an empty array.
+  if (delta.length === 0) {
     return NextResponse.json({
       kind: "summary",
-      bullets: stored.bullets,
-      pinnedFacts: stored.pinnedFacts,
+      bullets: stored?.bullets ?? [],
+      pinnedFacts: stored?.pinnedFacts ?? { names: [], decisions: [], files: [] },
     });
   }
 
