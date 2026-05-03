@@ -1,5 +1,10 @@
 import { NextRequest } from "next/server";
-import { getRoom, setParticipantLastSeen, snapshot } from "@/lib/store";
+import {
+  getReactionsForRoom,
+  getRoom,
+  setParticipantLastSeen,
+  snapshot,
+} from "@/lib/store";
 import { subscribe, unsubscribe } from "@/lib/sse";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +12,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const room = await getRoom(id);
+  const [room, reactions] = await Promise.all([getRoom(id), getReactionsForRoom(id)]);
   if (!room) return new Response("Not found", { status: 404 });
 
   const cookieName = `mindforum_pid_${id}`;
@@ -17,7 +22,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const writer = stream.writable.getWriter();
   const encoder = new TextEncoder();
 
-  writer.write(encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot(room))}\n\n`));
+  writer.write(
+    encoder.encode(`event: snapshot\ndata: ${JSON.stringify(snapshot(room, reactions))}\n\n`)
+  );
 
   subscribe(id, writer);
 
