@@ -31,8 +31,8 @@ export async function PATCH(
   if (!content) return NextResponse.json({ error: "empty" }, { status: 400 });
 
   const updated = await editMessage(msgId, participant.id, content.slice(0, MAX_CONTENT));
-  // Null = either nonexistent or not the author. Same external response either
-  // way — don't reveal which.
+  // Existence / cross-room mismatches are handled above with a 404. A null
+  // result here is treated as a failed edit authorization and returns 403.
   if (!updated) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   // Reuse the existing message_updated event the AI stream already uses, with
