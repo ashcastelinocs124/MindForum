@@ -26,9 +26,12 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     return NextResponse.json({
       kind: "orientation",
       // Backward-compat shape: the orientation modal lists files by id+name,
-      // but with no chat there's nothing to summarize anyway. We pass names
-      // as both the id and the name; the client only renders names.
-      files: room.selectedFileNames.map((name) => ({ id: name, name })),
+      // but with no chat there's nothing to summarize anyway. Generate a
+      // synthetic unique id for each entry while still returning the file name.
+      files: room.selectedFileNames.map((name, index) => ({
+        id: `${index}:${name}`,
+        name,
+      })),
     });
   }
 
