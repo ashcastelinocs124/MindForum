@@ -658,7 +658,8 @@ export async function getChatMessagesAfter(
     created_at: Date;
   }>(
     `WITH anchor AS (
-       SELECT created_at, id FROM messages WHERE id = $2
+       SELECT created_at, id FROM messages
+       WHERE id = $2 AND room_id = $1 AND kind = 'chat'
      )
      SELECT m.id, m.room_id, m.author_id, m.author_name, m.content, m.kind, m.created_at
      FROM messages m, anchor a
@@ -668,6 +669,15 @@ export async function getChatMessagesAfter(
      ORDER BY m.created_at ASC, m.id ASC`,
     [roomId, afterMsgId]
   );
+  if (rows.length === 0) {
+    const anchorCheck = await query<{ id: string }>(
+      `SELECT id FROM messages WHERE id = $1 AND room_id = $2 AND kind = 'chat'`,
+      [afterMsgId, roomId]
+    );
+    if (anchorCheck.rows.length === 0) {
+      return getChatMessagesAfter(roomId, null);
+    }
+  }
   return rows.map(toMessage);
 }
 
