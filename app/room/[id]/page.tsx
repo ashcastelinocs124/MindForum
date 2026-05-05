@@ -26,6 +26,15 @@ type PublicFile = {
   uploadedById: string;
   uploadedAt: number;
 };
+type FilePreview = {
+  id: string;
+  name: string;
+  mime: string;
+  sizeBytes: number;
+  uploadedAt: number;
+  uploadedById: string;
+  extractedText: string;
+};
 type Reaction = { emoji: string; count: number; reacterIds: string[] };
 type Msg = {
   id: string;
@@ -77,6 +86,10 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const [unread, setUnread] = useState(0);
   const [perm, setPerm] = useState<NotificationPermission | "unsupported">("default");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<FilePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const nameRef = useRef(name);
   const prefsRef = useRef(prefs);
@@ -91,6 +104,45 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   useEffect(() => {
     participantIdRef.current = participantId;
   }, [participantId]);
+
+  // Fetch file content when the preview modal opens.
+  useEffect(() => {
+    if (!previewFileId) {
+      setPreviewData(null);
+      setPreviewError(null);
+      return;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    fetch(`/api/room/${id}/files/${previewFileId}`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<FilePreview>;
+      })
+      .then((data) => {
+        if (!cancelled) setPreviewData(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setPreviewError(e instanceof Error ? e.message : "Failed to load");
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previewFileId, id]);
+
+  // Esc closes the preview modal.
+  useEffect(() => {
+    if (!previewFileId) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewFileId(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [previewFileId]);
 
   // Prefill name + email from previous session so returning users don't retype.
   useEffect(() => {
@@ -775,7 +827,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             {state.files.map((f) => {
               const selected = state.selectedFileIds.includes(f.id);
               return (
-                <label
+                <div
                   key={f.id}
                   style={{
                     display: "flex",
@@ -789,19 +841,39 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                     type="checkbox"
                     checked={selected}
                     onChange={(e) => toggleFile(f.id, e.target.checked)}
+                    aria-label={`Include ${f.name} in AI context`}
                   />
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => setPreviewFileId(f.id)}
+                    title={`Preview ${f.name}`}
                     style={{
                       flex: 1,
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
+                      textAlign: "left",
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      margin: 0,
+                      font: "inherit",
+                      color: "inherit",
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textDecorationColor: "var(--border)",
+                      textUnderlineOffset: 3,
                     }}
-                    title={f.name}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "currentColor";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "var(--border)";
+                    }}
                   >
                     {f.name}
-                  </span>
-                </label>
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -843,7 +915,163 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           </div>
         </aside>
       </div>
+      {previewFileId && (
+        <FilePreviewModal
+          loading={previewLoading}
+          error={previewError}
+          data={previewData}
+          onClose={() => setPreviewFileId(null)}
+        />
+      )}
     </main>
+  );
+}
+
+function FilePreviewModal({
+  loading,
+  error,
+  data,
+  onClose,
+}: {
+  loading: boolean;
+  error: string | null;
+  data: FilePreview | null;
+  onClose: () => void;
+}) {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 600;
+  const ext = data ? data.name.toLowerCase().split(".").pop() ?? "" : "";
+  const isMd = ext === "md" || ext === "markdown";
+  const isTxt = ext === "txt";
+  const showExtractedBanner = !!data && !isMd && !isTxt;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex",
+        alignItems: isMobile ? "stretch" : "center",
+        justifyContent: "center",
+        zIndex: 60,
+        padding: isMobile ? 0 : 24,
+      }}
+    >
+      <div
+        style={{
+          background: "white",
+          borderRadius: isMobile ? 0 : 12,
+          width: isMobile ? "100%" : "min(800px, 100%)",
+          maxHeight: isMobile ? "100%" : "85vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 10px 40px rgba(0,0,0,0.2)",
+          fontFamily: "system-ui, sans-serif",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "16px 20px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div
+              style={{
+                fontWeight: 600,
+                fontSize: 16,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={data?.name}
+            >
+              {data?.name ?? (loading ? "Loading…" : "File")}
+            </div>
+            {data && (
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                {Math.max(1, Math.round(data.sizeBytes / 1024))} KB
+                {" · uploaded "}
+                {new Date(data.uploadedAt).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 24,
+              lineHeight: 1,
+              cursor: "pointer",
+              color: "var(--muted)",
+              padding: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "16px 20px",
+            fontSize: 14,
+          }}
+        >
+          {loading && <p style={{ color: "var(--muted)" }}>Loading…</p>}
+          {error && (
+            <p style={{ color: "#b91c1c" }}>
+              Couldn&apos;t load this file: {error}
+            </p>
+          )}
+          {data && showExtractedBanner && (
+            <div
+              style={{
+                background: "#fef3c7",
+                border: "1px solid #fcd34d",
+                borderRadius: 6,
+                padding: "8px 12px",
+                marginBottom: 12,
+                fontSize: 13,
+                color: "#78350f",
+              }}
+            >
+              This is the text the AI extracted from the original file. Formatting may differ from the source.
+            </div>
+          )}
+          {data && isMd && (
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+              {data.extractedText || "_(empty)_"}
+            </ReactMarkdown>
+          )}
+          {data && !isMd && (
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontSize: 13,
+                margin: 0,
+              }}
+            >
+              {data.extractedText || "(empty)"}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
