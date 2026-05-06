@@ -113,9 +113,12 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
       return;
     }
     let cancelled = false;
+    // Clear stale data from a previous file so we don't render A's content
+    // while B is still loading after a fast switch.
+    setPreviewData(null);
     setPreviewLoading(true);
     setPreviewError(null);
-    fetch(`/api/room/${id}/files/${previewFileId}`)
+    fetch(`/api/room/${id}/files/${encodeURIComponent(previewFileId)}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<FilePreview>;
@@ -134,14 +137,19 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
     };
   }, [previewFileId, id]);
 
-  // Esc closes the preview modal.
+  // Esc closes the preview modal + lock body scroll while open.
   useEffect(() => {
     if (!previewFileId) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setPreviewFileId(null);
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [previewFileId]);
 
   // Prefill name + email from previous session so returning users don't retype.
@@ -944,10 +952,13 @@ function FilePreviewModal({
   const isTxt = ext === "txt";
   const showExtractedBanner = !!data && !isMd && !isTxt;
 
+  const titleId = "file-preview-title";
+
   return (
     <div
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -986,6 +997,7 @@ function FilePreviewModal({
         >
           <div style={{ minWidth: 0, flex: 1 }}>
             <div
+              id={titleId}
               style={{
                 fontWeight: 600,
                 fontSize: 16,
