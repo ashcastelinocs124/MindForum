@@ -34,7 +34,7 @@ See `~/.claude/references/vps-deployment.md` for shared-VPS gotchas (deploy keys
 
 ## Reseeding a room at a specific ID
 
-After a restart wipes process memory (pre-Postgres behavior) or when preloading a canonical room setup, use the admin seed endpoint. Script template at `/tmp/seed-mindforum-room.py` from the initial setup — scp to VPS and run. Canonical room for the 01-sequence AI ethics exercise is `-xM9Qgfk4g` (config in `rooms/2026-04-20-ai-ethics-exercise-design/`).
+After a restart wipes process memory (pre-Postgres behavior) or when preloading a canonical room setup, use the admin seed endpoint. Script template at `/tmp/seed-mindforum-room.py` from the initial setup — scp to VPS and run. Canonical room for the 01-sequence AI ethics exercise is `ai-ethics-exercise` (config in `rooms/2026-04-20-ai-ethics-exercise-design/`).
 
 ## Rate limits (per-IP, in-memory)
 
@@ -85,10 +85,10 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 - [x] `@`-mention notifications + live in-input mention coloring — [PR #8](https://github.com/gies-ai-experiments/MindForum/pull/8), shipped 2026-05-01
 - [x] GitHub Actions auto-deploy on push to `main` (restricted SSH key, idempotent `scripts/deploy.sh`, ~32s end-to-end) — shipped 2026-05-01
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
-- [ ] Send faculty invitation for room `-xM9Qgfk4g`
+- [ ] Send faculty invitation for room `ai-ethics-exercise` (renamed from `-xM9Qgfk4g` 2026-05-06)
 - [ ] Collect feedback from first facilitated session; iterate on prompts
 - [ ] **2026-05-25 review:** four weeks after MSBAi rooms launch — check usage signal (faculty engagement vs lurking) to decide whether to keep brainstorm framing or convert to a K-ai-activity-mirror digest (see `.claude/plans/file-content-preview-ux.md` for the broader UX direction)
-- [ ] File-content preview UX (modal with markdown render) — issue [#5](https://github.com/gies-ai-experiments/MindForum/issues/5), spec in `docs/feature-requests/file-content-preview.md`, owned by student collaborator
+- [x] File-content preview UX (modal with markdown render) — issue [#5](https://github.com/gies-ai-experiments/MindForum/issues/5), [PR #10](https://github.com/gies-ai-experiments/MindForum/pull/10), shipped 2026-05-06
 
 ## Session Log
 
