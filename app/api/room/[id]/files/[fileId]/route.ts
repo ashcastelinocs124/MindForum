@@ -30,10 +30,16 @@ export async function GET(
     uploaded_by_id: string;
     uploaded_at: Date;
     extracted_text: string;
+    uploader_name: string | null;
+    uploader_email: string | null;
   }>(
-    `SELECT id, name, mime, size_bytes, uploaded_by_id, uploaded_at, extracted_text
-     FROM room_files
-     WHERE room_id = $1 AND id = $2`,
+    `SELECT rf.id, rf.name, rf.mime, rf.size_bytes, rf.uploaded_by_id, rf.uploaded_at,
+            rf.extracted_text,
+            p.name AS uploader_name, p.email AS uploader_email
+     FROM room_files rf
+     LEFT JOIN participants p
+       ON p.id = rf.uploaded_by_id AND p.room_id = rf.room_id
+     WHERE rf.room_id = $1 AND rf.id = $2`,
     [id, fileId]
   );
   const row = rows[0];
@@ -46,6 +52,8 @@ export async function GET(
     sizeBytes: row.size_bytes,
     uploadedAt: row.uploaded_at.getTime(),
     uploadedById: row.uploaded_by_id,
+    uploaderName: row.uploader_name,
+    uploaderEmail: row.uploader_email,
     extractedText: row.extracted_text,
   });
 }
