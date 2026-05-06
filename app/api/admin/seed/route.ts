@@ -4,6 +4,7 @@ import path from "path";
 import crypto from "crypto";
 import { adminAddFile, adminUpsertRoom, type RoomFile } from "@/lib/store";
 import { parseFile } from "@/lib/parse";
+import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -25,9 +26,18 @@ type SeedBody = {
    * then re-create. Use this for intentional resets.
    */
   replaceMode?: "metadata" | "full";
+  /**
+   * Override the default attribution applied to seeded files. When omitted,
+   * falls back to SEED_UPLOADER_NAME / SEED_UPLOADER_EMAIL env vars, then to
+   * a hardcoded default. Seeded files are attributed to a synthetic
+   * participant row (id "seed-uploader") so the UI shows a real name instead
+   * of "Unknown uploader".
+   */
+  seedUploader?: { name: string; email: string };
 };
 
 const MAX_TEXT_CHARS = 200_000;
+const SEED_UPLOADER_ID = "seed-uploader";
 
 /**
  * Admin-only room seeder. Idempotent.
@@ -67,6 +77,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "db_error" }, { status: 500 });
   }
 
+  // Synthesise a participant row to attribute seeded files. The Files panel
+  // resolves uploader name via the participants list; without this, seeded
+  // files show "Unknown uploader" because their uploaded_by_id has no match.
+  const seedName =
+    body.seedUploader?.name ?? process.env.SEED_UPLOADER_NAME ?? "Vishal Sachdev";
+  const seedEmail =
+    body.seedUploader?.email ??
+    process.env.SEED_UPLOADER_EMAIL ??
+    "vishal@illinois.edu";
+  let seedUploaderId = SEED_UPLOADER_ID;
+  if ((body.files ?? []).length > 0) {
+    try {
+      const ins = await query<{ id: string }>(
+        `INSERT INTO participants (id, room_id, name, email)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (id, room_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email
+         RETURNING id`,
+        [SEED_UPLOADER_ID, body.id, seedName, seedEmail]
+      );
+      if (ins.rows[0]) seedUploaderId = ins.rows[0].id;
+    } catch {
+      // participants_room_email_uniq violation: a real participant with this
+      // email already joined the room. Attribute seeded files to them.
+      const existing = await query<{ id: string }>(
+        `SELECT id FROM participants
+         WHERE room_id = $1 AND lower(email) = lower($2)
+         LIMIT 1`,
+        [body.id, seedEmail]
+      );
+      if (existing.rows[0]) seedUploaderId = existing.rows[0].id;
+    }
+  }
+
   const loaded: { name: string; path: string; bytes: number }[] = [];
   const failed: { path: string; error: string }[] = [];
 
@@ -91,7 +134,7 @@ export async function POST(req: NextRequest) {
         name: fileName,
         mime: parsed.mime,
         sizeBytes: buf.length,
-        uploadedById: "seed",
+        uploadedById: seedUploaderId,
         uploadedAt: Date.now(),
         extractedText: parsed.text.slice(0, MAX_TEXT_CHARS),
         selected: sf.selected !== false,
