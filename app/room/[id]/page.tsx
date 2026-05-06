@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, use } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import TextareaAutosize from "react-textarea-autosize";
 import {
   DEFAULT_PREFS,
   type NotifyPrefs,
@@ -33,6 +34,8 @@ type FilePreview = {
   sizeBytes: number;
   uploadedAt: number;
   uploadedById: string;
+  uploaderName: string | null;
+  uploaderEmail: string | null;
   extractedText: string;
 };
 type Reaction = { emoji: string; count: number; reacterIds: string[] };
@@ -452,8 +455,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
     setDraft((d) => block + d);
   }
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitDraft() {
     const content = draft.trim();
     if (!content) return;
     setDraft("");
@@ -462,6 +464,11 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ content }),
     });
+  }
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    await submitDraft();
   }
 
   async function upload(file: File) {
@@ -773,7 +780,7 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                     ))}
                   </div>
                 )}
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                   <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
                     <div
                       aria-hidden="true"
@@ -783,22 +790,37 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                         position: "absolute",
                         inset: 0,
                         pointerEvents: "none",
-                        whiteSpace: "pre",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
                         overflow: "hidden",
                         borderColor: "transparent",
                         background: "transparent",
                         color: "var(--text)",
+                        lineHeight: 1.4,
                       }}
                     >
                       {renderInputMentions(draft)}
                     </div>
-                    <input
+                    <TextareaAutosize
                       value={draft}
                       onChange={(e) => setDraft(e.target.value)}
-                      placeholder="Type a message. Start with @ai to ask the AI."
+                      onKeyDown={(e) => {
+                        if (
+                          e.key === "Enter" &&
+                          !e.shiftKey &&
+                          !e.nativeEvent.isComposing
+                        ) {
+                          e.preventDefault();
+                          void submitDraft();
+                        }
+                      }}
+                      placeholder="Type a message. Start with @ai to ask the AI. (Shift+Enter for newline)"
+                      minRows={1}
+                      maxRows={8}
                       style={{
                         ...inp(),
                         width: "100%",
+                        display: "block",
                         borderColor: aiMention ? "var(--orange)" : "var(--border)",
                         boxShadow: aiMention ? "0 0 0 3px rgba(232,74,39,0.15)" : "none",
                         outline: "none",
@@ -807,7 +829,11 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                         color: draft ? "transparent" : undefined,
                         caretColor: "var(--text)",
                         position: "relative",
-                      }}
+                        resize: "none",
+                        fontFamily: "inherit",
+                        lineHeight: 1.4,
+                        overflowY: "auto",
+                      } as React.ComponentProps<typeof TextareaAutosize>["style"]}
                     />
                   </div>
                   <button type="submit" style={btnPrimary()}>
@@ -834,14 +860,17 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             )}
             {state.files.map((f) => {
               const selected = state.selectedFileIds.includes(f.id);
+              const uploader = state.participants.find((p) => p.id === f.uploadedById);
+              const uploaderLabel = uploader ? uploader.name : "Unknown uploader";
+              const uploadedDate = new Date(f.uploadedAt).toLocaleDateString();
               return (
                 <div
                   key={f.id}
                   style={{
                     display: "flex",
                     gap: 8,
-                    alignItems: "center",
-                    padding: "4px 0",
+                    alignItems: "flex-start",
+                    padding: "6px 0",
                     fontSize: 14,
                   }}
                 >
@@ -850,37 +879,54 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                     checked={selected}
                     onChange={(e) => toggleFile(f.id, e.target.checked)}
                     aria-label={`Include ${f.name} in AI context`}
+                    style={{ marginTop: 3 }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setPreviewFileId(f.id)}
-                    title={`Preview ${f.name}`}
-                    style={{
-                      flex: 1,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      textAlign: "left",
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      margin: 0,
-                      font: "inherit",
-                      color: "inherit",
-                      cursor: "pointer",
-                      textDecoration: "underline",
-                      textDecorationColor: "var(--border)",
-                      textUnderlineOffset: 3,
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "currentColor";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "var(--border)";
-                    }}
-                  >
-                    {f.name}
-                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewFileId(f.id)}
+                      title={`Preview ${f.name}`}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        textAlign: "left",
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        margin: 0,
+                        font: "inherit",
+                        color: "inherit",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        textDecorationColor: "var(--border)",
+                        textUnderlineOffset: 3,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "currentColor";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "var(--border)";
+                      }}
+                    >
+                      {f.name}
+                    </button>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "var(--muted)",
+                        marginTop: 2,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={uploader?.email ? `${uploaderLabel} · ${uploader.email}` : uploaderLabel}
+                    >
+                      {uploaderLabel} · {uploadedDate}
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -1012,8 +1058,11 @@ function FilePreviewModal({
             {data && (
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                 {Math.max(1, Math.round(data.sizeBytes / 1024))} KB
-                {" · uploaded "}
-                {new Date(data.uploadedAt).toLocaleDateString()}
+                {" · Uploaded by "}
+                {data.uploaderName ?? "Unknown"}
+                {data.uploaderEmail ? ` (${data.uploaderEmail})` : ""}
+                {" · "}
+                {new Date(data.uploadedAt).toLocaleString()}
               </div>
             )}
           </div>
