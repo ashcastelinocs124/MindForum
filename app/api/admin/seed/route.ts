@@ -27,17 +27,16 @@ type SeedBody = {
    */
   replaceMode?: "metadata" | "full";
   /**
-   * Override the default attribution applied to seeded files. When omitted,
-   * falls back to SEED_UPLOADER_NAME / SEED_UPLOADER_EMAIL env vars, then to
-   * a hardcoded default. Seeded files are attributed to a synthetic
-   * participant row (id "seed-uploader") so the UI shows a real name instead
-   * of "Unknown uploader".
+   * Override the email used to look up a real participant for file
+   * attribution. When omitted, falls back to SEED_UPLOADER_EMAIL env var,
+   * then to a hardcoded default. If no participant in the room matches,
+   * seeded files use the legacy "seed" marker and render as "Unknown
+   * uploader" until a re-seed happens after the admin has joined.
    */
-  seedUploader?: { name: string; email: string };
+  seedUploader?: { email: string };
 };
 
 const MAX_TEXT_CHARS = 200_000;
-const SEED_UPLOADER_ID = "seed-uploader";
 
 /**
  * Admin-only room seeder. Idempotent.
@@ -77,37 +76,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "db_error" }, { status: 500 });
   }
 
-  // Synthesise a participant row to attribute seeded files. The Files panel
-  // resolves uploader name via the participants list; without this, seeded
-  // files show "Unknown uploader" because their uploaded_by_id has no match.
-  const seedName =
-    body.seedUploader?.name ?? process.env.SEED_UPLOADER_NAME ?? "Vishal Sachdev";
+  // Attribute seeded files to a real participant (matched by email) so the
+  // Files panel shows a name instead of "Unknown uploader". We deliberately
+  // do NOT create a synthetic participant row — that would surface in the
+  // Participants sidebar, mention suggestions, and snapshot before any human
+  // joined. If no matching participant exists yet, files keep the legacy
+  // 'seed' marker; a subsequent re-seed (after the admin joins) will repoint
+  // them via replaceMode "metadata".
   const seedEmail =
     body.seedUploader?.email ??
     process.env.SEED_UPLOADER_EMAIL ??
     "vishal@illinois.edu";
-  let seedUploaderId = SEED_UPLOADER_ID;
+  let seedUploaderId = "seed";
   if ((body.files ?? []).length > 0) {
-    try {
-      const ins = await query<{ id: string }>(
-        `INSERT INTO participants (id, room_id, name, email)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id, room_id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email
-         RETURNING id`,
-        [SEED_UPLOADER_ID, body.id, seedName, seedEmail]
-      );
-      if (ins.rows[0]) seedUploaderId = ins.rows[0].id;
-    } catch {
-      // participants_room_email_uniq violation: a real participant with this
-      // email already joined the room. Attribute seeded files to them.
-      const existing = await query<{ id: string }>(
-        `SELECT id FROM participants
-         WHERE room_id = $1 AND lower(email) = lower($2)
-         LIMIT 1`,
-        [body.id, seedEmail]
-      );
-      if (existing.rows[0]) seedUploaderId = existing.rows[0].id;
-    }
+    const existing = await query<{ id: string }>(
+      `SELECT id FROM participants
+       WHERE room_id = $1 AND lower(email) = lower($2)
+       LIMIT 1`,
+      [body.id, seedEmail]
+    );
+    if (existing.rows[0]) seedUploaderId = existing.rows[0].id;
   }
 
   const loaded: { name: string; path: string; bytes: number }[] = [];
