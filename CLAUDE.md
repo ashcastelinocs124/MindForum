@@ -90,6 +90,7 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 - [x] Multi-line chat input (TextareaAutosize, Enter/Shift+Enter, IME-safe) — shipped 2026-05-06
 - [x] File uploader attribution in Files panel + preview modal; seeded files attribute via email lookup to existing real participant — shipped 2026-05-06
 - [x] Mobile/narrow-viewport pass: drawer-based Participants/Files, single-column chat, `100dvh` for iOS keyboard — shipped 2026-05-07
+- [x] Faculty brainstorm room for Gies AI Teaching Showcase (`ai-in-teaching-research`) — seeded with co-facilitator system prompt + AI starter message, 2026-05-07
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `ai-ethics-exercise`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
@@ -98,5 +99,5 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 ## Session Log
 
 ### 2026-05-07
-- Completed: Narrow-viewport pass on `/room/[id]`. Added `useIsNarrow(720)` matchMedia hook + `Drawer` component; under 720px the 3-col grid (`220px 1fr 280px`) collapses to single-column chat with Participants and Files moved into slide-over drawers triggered by `👥 N` / `📁 N` header buttons. Header now wraps with truncated room title. Switched main grid `100vh` → `100dvh` so iOS URL bar / keyboard shrink the chat region instead of pushing the composer off-screen. Files drawer auto-closes when tapping a file (preview modal takes over) or hitting "Generate brief". Participants/Files panel bodies extracted into local JSX vars so wide layout and drawers share one source. Build clean, deployed via auto-deploy (run 25474703504, 41s).
-- Next: Visual sanity-check at 375px in real Safari (drawer gestures, sticky composer with keyboard up). Set OpenAI monthly spend cap on the MindForum key. Send faculty invitation for `ai-ethics-exercise`.
+- Completed: (AM) Narrow-viewport pass on `/room/[id]` — `useIsNarrow(720)` matchMedia hook + `Drawer` component, 3-col grid collapses to single-column chat with Participants/Files in slide-over drawers (`👥 N` / `📁 N` header buttons), `100vh` → `100dvh` so iOS keyboard shrinks chat region instead of pushing composer offscreen, build clean, auto-deployed (run 25474703504, 41s). (PM) Spun up `ai-in-teaching-research` room for the Gies AI Teaching Showcase: scaffolded `rooms/2026-05-07-ai-in-teaching-research/` with facilitator system prompt (AI co-facilitator on syllabus/assignment/research-workflow uploads → 1–2 clarifying questions → 3 concrete moves with watch-outs; stays quiet during peer-to-peer talk), seeded via `/api/admin/seed` with `replaceMode: metadata`, inserted welcome message via direct SQL on VPS as `author_id='ai'`. Room URL: https://mindforum.illinihunt.org/room/ai-in-teaching-research.
+- Next: Run live workshop session today. Visual sanity-check narrow-viewport at 375px in real Safari (drawer gestures, sticky composer with keyboard up). Set OpenAI monthly spend cap on the MindForum key. Send faculty invitation for `ai-ethics-exercise`.
