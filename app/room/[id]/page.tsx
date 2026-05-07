@@ -93,6 +93,15 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   const [previewData, setPreviewData] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const isNarrow = useIsNarrow(720);
+  const [participantsDrawerOpen, setParticipantsDrawerOpen] = useState(false);
+  const [filesDrawerOpen, setFilesDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (!isNarrow) {
+      setParticipantsDrawerOpen(false);
+      setFilesDrawerOpen(false);
+    }
+  }, [isNarrow]);
 
   const nameRef = useRef(name);
   const prefsRef = useRef(prefs);
@@ -543,13 +552,159 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
 
   if (!state) return <main style={{ padding: 24 }}>Connecting…</main>;
 
+  const participantsListNode = (
+    <div style={{ padding: isNarrow ? 12 : 0, overflowY: "auto", height: "100%" }}>
+      {state.participants.map((p) => (
+        <div
+          key={p.id}
+          style={{ display: "flex", gap: 8, alignItems: "center", padding: "6px 0" }}
+        >
+          <span style={{ width: 8, height: 8, borderRadius: 8, background: "#22c55e" }} />
+          <span>{p.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const filesPanelNode = (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateRows: "1fr auto auto",
+        gap: 8,
+        minHeight: 0,
+        height: "100%",
+        padding: isNarrow ? 12 : 0,
+      }}
+    >
+      <div style={{ overflowY: "auto" }}>
+        {state.files.length === 0 && (
+          <p style={{ color: "var(--muted)", fontSize: 14 }}>No files yet.</p>
+        )}
+        {state.files.map((f) => {
+          const selected = state.selectedFileIds.includes(f.id);
+          const uploader = state.participants.find((p) => p.id === f.uploadedById);
+          const uploaderLabel = uploader ? uploader.name : "Unknown uploader";
+          const uploadedDate = new Date(f.uploadedAt).toLocaleDateString();
+          return (
+            <div
+              key={f.id}
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+                padding: "6px 0",
+                fontSize: 14,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={(e) => toggleFile(f.id, e.target.checked)}
+                aria-label={`Include ${f.name} in AI context`}
+                style={{ marginTop: 3 }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewFileId(f.id);
+                    setFilesDrawerOpen(false);
+                  }}
+                  title={`Preview ${f.name}`}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    textAlign: "left",
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    font: "inherit",
+                    color: "inherit",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    textDecorationColor: "var(--border)",
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  {f.name}
+                </button>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--muted)",
+                    marginTop: 2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={uploader?.email ? `${uploaderLabel} · ${uploader.email}` : uploaderLabel}
+                >
+                  {uploaderLabel} · {uploadedDate}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <label
+        style={{
+          ...btnSecondary(),
+          textAlign: "center",
+          display: "block",
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        {busy ? "Uploading…" : "+ Upload file"}
+        <input
+          type="file"
+          hidden
+          accept=".pdf,.docx,.txt,.md"
+          disabled={busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) upload(f);
+            e.target.value = "";
+          }}
+        />
+      </label>
+      <div>
+        <button
+          onClick={() => {
+            generateBrief();
+            setFilesDrawerOpen(false);
+          }}
+          disabled={briefPending}
+          style={{ ...heroBtn(), width: "100%" }}
+        >
+          {briefPending ? "Generating…" : "✨ Generate project brief"}
+        </button>
+        <p
+          style={{
+            fontSize: 12,
+            color: "var(--muted)",
+            lineHeight: 1.4,
+            margin: "8px 0 0",
+          }}
+        >
+          Turns the conversation and any selected files into a structured brief — themes, outline, risks, next steps, suggested collaborators. Posts to the thread for everyone. Takes ~10–20s.
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <main
       style={{
-        height: "100vh",
+        height: "100dvh",
         display: "grid",
         gridTemplateRows: "auto 1fr",
         background: "var(--bg)",
+        minHeight: 0,
       }}
     >
       {catchupOpen && (
@@ -653,17 +808,71 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: "12px 20px",
+          flexWrap: "wrap",
+          rowGap: 8,
+          padding: isNarrow ? "10px 12px" : "12px 20px",
           background: "var(--navy)",
           color: "white",
           position: "relative",
         }}
       >
-        <div>
+        <div style={{ minWidth: 0, flex: "1 1 160px" }}>
           <div style={{ fontSize: 12, opacity: 0.75 }}>MindForum</div>
-          <div style={{ fontFamily: "Montserrat, sans-serif", fontSize: 20 }}>{state.name}</div>
+          <div
+            style={{
+              fontFamily: "Montserrat, sans-serif",
+              fontSize: isNarrow ? 17 : 20,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {state.name}
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            position: "relative",
+            flexWrap: "wrap",
+          }}
+        >
+          {isNarrow && (
+            <>
+              <button
+                type="button"
+                onClick={() => setParticipantsDrawerOpen(true)}
+                aria-label={`Show participants (${state.participants.length})`}
+                style={{
+                  ...btnSecondary(),
+                  background: "rgba(255,255,255,0.12)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span aria-hidden="true">👥</span>
+                <span>{state.participants.length}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilesDrawerOpen(true)}
+                aria-label={`Show files (${state.files.length})`}
+                style={{
+                  ...btnSecondary(),
+                  background: "rgba(255,255,255,0.12)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span aria-hidden="true">📁</span>
+                <span>{state.files.length}</span>
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setSettingsOpen((o) => !o)}
@@ -713,26 +922,18 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "220px 1fr 280px",
-          gap: 16,
-          padding: 16,
+          gridTemplateColumns: isNarrow ? "1fr" : "220px 1fr 280px",
+          gap: isNarrow ? 8 : 16,
+          padding: isNarrow ? 8 : 16,
           minHeight: 0,
         }}
       >
-        <aside style={col()}>
-          <h3 style={colTitle()}>Participants</h3>
-          {state.participants.map((p) => (
-            <div
-              key={p.id}
-              style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}
-            >
-              <span
-                style={{ width: 8, height: 8, borderRadius: 8, background: "#22c55e" }}
-              />
-              <span>{p.name}</span>
-            </div>
-          ))}
-        </aside>
+        {!isNarrow && (
+          <aside style={{ ...col(), display: "grid", gridTemplateRows: "auto 1fr", minHeight: 0 }}>
+            <h3 style={colTitle()}>Participants</h3>
+            {participantsListNode}
+          </aside>
+        )}
 
         <section
           style={{ ...col(), minHeight: 0, display: "grid", gridTemplateRows: "1fr auto" }}
@@ -845,130 +1046,39 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           })()}
         </section>
 
-        <aside
-          style={{
-            ...col(),
-            display: "grid",
-            gridTemplateRows: "auto 1fr auto auto",
-            gap: 8,
-          }}
-        >
-          <h3 style={colTitle()}>Files</h3>
-          <div style={{ overflowY: "auto" }}>
-            {state.files.length === 0 && (
-              <p style={{ color: "var(--muted)", fontSize: 14 }}>No files yet.</p>
-            )}
-            {state.files.map((f) => {
-              const selected = state.selectedFileIds.includes(f.id);
-              const uploader = state.participants.find((p) => p.id === f.uploadedById);
-              const uploaderLabel = uploader ? uploader.name : "Unknown uploader";
-              const uploadedDate = new Date(f.uploadedAt).toLocaleDateString();
-              return (
-                <div
-                  key={f.id}
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    alignItems: "flex-start",
-                    padding: "6px 0",
-                    fontSize: 14,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onChange={(e) => toggleFile(f.id, e.target.checked)}
-                    aria-label={`Include ${f.name} in AI context`}
-                    style={{ marginTop: 3 }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewFileId(f.id)}
-                      title={`Preview ${f.name}`}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        textAlign: "left",
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        margin: 0,
-                        font: "inherit",
-                        color: "inherit",
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                        textDecorationColor: "var(--border)",
-                        textUnderlineOffset: 3,
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "currentColor";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.textDecorationColor = "var(--border)";
-                      }}
-                    >
-                      {f.name}
-                    </button>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--muted)",
-                        marginTop: 2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={uploader?.email ? `${uploaderLabel} · ${uploader.email}` : uploaderLabel}
-                    >
-                      {uploaderLabel} · {uploadedDate}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <label
+        {!isNarrow && (
+          <aside
             style={{
-              ...btnSecondary(),
-              textAlign: "center",
-              display: "block",
-              opacity: busy ? 0.6 : 1,
+              ...col(),
+              display: "grid",
+              gridTemplateRows: "auto 1fr",
+              gap: 8,
+              minHeight: 0,
             }}
           >
-            {busy ? "Uploading…" : "+ Upload file"}
-            <input
-              type="file"
-              hidden
-              accept=".pdf,.docx,.txt,.md"
-              disabled={busy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) upload(f);
-                e.target.value = "";
-              }}
-            />
-          </label>
-          <div>
-            <button onClick={generateBrief} disabled={briefPending} style={{ ...heroBtn(), width: "100%" }}>
-              {briefPending ? "Generating…" : "✨ Generate project brief"}
-            </button>
-            <p
-              style={{
-                fontSize: 12,
-                color: "var(--muted)",
-                lineHeight: 1.4,
-                margin: "8px 0 0",
-              }}
-            >
-              Turns the conversation and any selected files into a structured brief — themes, outline, risks, next steps, suggested collaborators. Posts to the thread for everyone. Takes ~10–20s.
-            </p>
-          </div>
-        </aside>
+            <h3 style={colTitle()}>Files</h3>
+            {filesPanelNode}
+          </aside>
+        )}
       </div>
+      {isNarrow && participantsDrawerOpen && (
+        <Drawer
+          side="left"
+          title={`Participants (${state.participants.length})`}
+          onClose={() => setParticipantsDrawerOpen(false)}
+        >
+          {participantsListNode}
+        </Drawer>
+      )}
+      {isNarrow && filesDrawerOpen && (
+        <Drawer
+          side="right"
+          title={`Files (${state.files.length})`}
+          onClose={() => setFilesDrawerOpen(false)}
+        >
+          {filesPanelNode}
+        </Drawer>
+      )}
       {previewFileId && (
         <FilePreviewModal
           loading={previewLoading}
@@ -978,6 +1088,102 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
         />
       )}
     </main>
+  );
+}
+
+function useIsNarrow(breakpoint = 720): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+  return narrow;
+}
+
+function Drawer({
+  side,
+  title,
+  onClose,
+  children,
+}: {
+  side: "left" | "right";
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        display: "flex",
+        flexDirection: side === "left" ? "row" : "row-reverse",
+      }}
+    >
+      <div
+        onClick={onClose}
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)" }}
+      />
+      <div
+        style={{
+          position: "relative",
+          background: "var(--card)",
+          width: "min(86vw, 320px)",
+          height: "100%",
+          display: "grid",
+          gridTemplateRows: "auto 1fr",
+          boxShadow:
+            side === "left"
+              ? "2px 0 16px rgba(0,0,0,0.25)"
+              : "-2px 0 16px rgba(0,0,0,0.25)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--border)",
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontSize: 16,
+              fontFamily: "Montserrat, sans-serif",
+              color: "var(--navy)",
+            }}
+          >
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              background: "transparent",
+              border: "none",
+              fontSize: 24,
+              lineHeight: 1,
+              color: "var(--muted)",
+              padding: 4,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ minHeight: 0, overflow: "hidden" }}>{children}</div>
+      </div>
+    </div>
   );
 }
 
