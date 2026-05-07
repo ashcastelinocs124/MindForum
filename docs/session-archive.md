@@ -2,6 +2,10 @@
 
 Older session log entries from CLAUDE.md. Kept for reference; not loaded by `/start-session`.
 
+### 2026-05-06
+- Completed: Renamed canonical AI-ethics room `-xM9Qgfk4g` → `ai-ethics-exercise` via in-place SQL transaction (insert new → repoint messages/participants/files → delete old; preserved 16 msgs + 2 files + 2 participants). Multi-line chat input shipped using `react-textarea-autosize` (Enter/Shift+Enter/IME-safe). File uploader attribution shipped: Files panel shows `Name · Date` (email on hover via title), preview modal shows full `KB · Uploaded by Name (email) · datetime`; preview API LEFT JOINs participants. Admin seed route now repoints seeded files to an existing real participant via email lookup (`SEED_UPLOADER_EMAIL` env, default `vishal@illinois.edu`); first attempt synthesised a `seed-uploader` participant row, codex-review caught it would pollute Participants sidebar/mentions/snapshot — replaced with email-lookup-only path that falls back to legacy `seed` marker if no match. Backfilled 34 existing seeded files on VPS to real Vishal participant ids per room. CLAUDE.md `Reseeding a room` section updated to new id.
+- Next: Set OpenAI monthly spend cap on the MindForum key (top of roadmap). Send faculty invitation for `ai-ethics-exercise`. Visual sanity-check chat textarea + file attribution at narrow viewport.
+
 ### 2026-05-02
 - Completed: Flattened nested folder layout — outer `~/research/mindforum/` was an empty git scaffold wrapping the real repo at `~/research/mindforum/MindForum/`. Moved 52K `rooms-backup-2026-04-21/` to a sibling dir, deleted outer empty `.git`/`.DS_Store`/duplicate `AGENTS.md`, then moved all `MindForum/` contents up one level. Repo now lives directly at `~/research/mindforum/`. Working tree clean, history intact, `main` up to date with origin.
 - Next: Set OpenAI monthly spend cap on the MindForum key (top of roadmap). Tail `/var/log/mindforum-refresh.log` for KB refresh cron health. Upload AI-Ready Illinois deck + Google doc to the new room.

@@ -89,6 +89,7 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 - [x] File-content preview UX (modal with markdown render) — issue [#5](https://github.com/gies-ai-experiments/MindForum/issues/5), [PR #10](https://github.com/gies-ai-experiments/MindForum/pull/10), shipped 2026-05-06
 - [x] Multi-line chat input (TextareaAutosize, Enter/Shift+Enter, IME-safe) — shipped 2026-05-06
 - [x] File uploader attribution in Files panel + preview modal; seeded files attribute via email lookup to existing real participant — shipped 2026-05-06
+- [x] Mobile/narrow-viewport pass: drawer-based Participants/Files, single-column chat, `100dvh` for iOS keyboard — shipped 2026-05-07
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `ai-ethics-exercise`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
@@ -96,6 +97,6 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 
 ## Session Log
 
-### 2026-05-06
-- Completed: Renamed canonical AI-ethics room `-xM9Qgfk4g` → `ai-ethics-exercise` via in-place SQL transaction (insert new → repoint messages/participants/files → delete old; preserved 16 msgs + 2 files + 2 participants). Multi-line chat input shipped using `react-textarea-autosize` (Enter/Shift+Enter/IME-safe). File uploader attribution shipped: Files panel shows `Name · Date` (email on hover via title), preview modal shows full `KB · Uploaded by Name (email) · datetime`; preview API LEFT JOINs participants. Admin seed route now repoints seeded files to an existing real participant via email lookup (`SEED_UPLOADER_EMAIL` env, default `vishal@illinois.edu`); first attempt synthesised a `seed-uploader` participant row, codex-review caught it would pollute Participants sidebar/mentions/snapshot — replaced with email-lookup-only path that falls back to legacy `seed` marker if no match. Backfilled 34 existing seeded files on VPS to real Vishal participant ids per room. CLAUDE.md `Reseeding a room` section updated to new id.
-- Next: Set OpenAI monthly spend cap on the MindForum key (top of roadmap). Send faculty invitation for `ai-ethics-exercise`. Visual sanity-check chat textarea + file attribution at narrow viewport.
+### 2026-05-07
+- Completed: Narrow-viewport pass on `/room/[id]`. Added `useIsNarrow(720)` matchMedia hook + `Drawer` component; under 720px the 3-col grid (`220px 1fr 280px`) collapses to single-column chat with Participants and Files moved into slide-over drawers triggered by `👥 N` / `📁 N` header buttons. Header now wraps with truncated room title. Switched main grid `100vh` → `100dvh` so iOS URL bar / keyboard shrink the chat region instead of pushing the composer off-screen. Files drawer auto-closes when tapping a file (preview modal takes over) or hitting "Generate brief". Participants/Files panel bodies extracted into local JSX vars so wide layout and drawers share one source. Build clean, deployed via auto-deploy (run 25474703504, 41s).
+- Next: Visual sanity-check at 375px in real Safari (drawer gestures, sticky composer with keyboard up). Set OpenAI monthly spend cap on the MindForum key. Send faculty invitation for `ai-ethics-exercise`.
