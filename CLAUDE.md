@@ -57,7 +57,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Send faculty invitation for `ai-ethics-exercise` room. Monitor early MSBAi engagement and the new `ai-ready-illinois-scoping` faculty room; tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the `/admin/rooms` dashboard.
+Implement v1 creator-owned rooms per `docs/plans/2026-05-07-creator-rooms-v1-min.md` — fresh branch off main, migrations v6/v7/v8 first, then `/dashboard` + `/admin/users`, verify against the doc's Acceptance Checklist. Side items: OpenAI monthly spend cap, faculty invitation for `ai-ethics-exercise`, monitor MSBAi + `ai-ready-illinois-scoping` rooms, tail `/var/log/mindforum-refresh.log`.
 
 ## Auto-deploy
 
@@ -91,6 +91,9 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 - [x] File uploader attribution in Files panel + preview modal; seeded files attribute via email lookup to existing real participant — shipped 2026-05-06
 - [x] Mobile/narrow-viewport pass: drawer-based Participants/Files, single-column chat, `100dvh` for iOS keyboard — shipped 2026-05-07
 - [x] Faculty brainstorm room for Gies AI Teaching Showcase (`ai-in-teaching-research`) — seeded with co-facilitator system prompt + AI starter message, 2026-05-07
+- [x] Co-authoring room for Innovation & Transformation group (`innovation-transformation`) — 2026-05-07
+- [x] Creator-owned rooms design spec + v1-minimum trim — 3 rounds Codex Plan Reviewer, APPROVED, merged via [PR #11](https://github.com/gies-ai-experiments/MindForum/pull/11). v1 spec at `docs/plans/2026-05-07-creator-rooms-v1-min.md` is the implementation contract.
+- [ ] **Implement v1 creator-owned rooms** per `docs/plans/2026-05-07-creator-rooms-v1-min.md`. Fresh branch off main; migrations v6/v7/v8 first; `/dashboard` + `/admin/users` second; verify against the doc's Acceptance Checklist.
 - [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
 - [ ] Send faculty invitation for room `ai-ethics-exercise`
 - [ ] Collect feedback from first facilitated session; iterate on prompts
@@ -99,5 +102,5 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 ## Session Log
 
 ### 2026-05-07
-- Completed: (AM) Narrow-viewport pass on `/room/[id]` — `useIsNarrow(720)` matchMedia hook + `Drawer` component, 3-col grid collapses to single-column chat with Participants/Files in slide-over drawers (`👥 N` / `📁 N` header buttons), `100vh` → `100dvh` so iOS keyboard shrinks chat region instead of pushing composer offscreen, build clean, auto-deployed (run 25474703504, 41s). (PM) Spun up `ai-in-teaching-research` room for the Gies AI Teaching Showcase: scaffolded `rooms/2026-05-07-ai-in-teaching-research/` with facilitator system prompt (AI co-facilitator on syllabus/assignment/research-workflow uploads → 1–2 clarifying questions → 3 concrete moves with watch-outs; stays quiet during peer-to-peer talk), seeded via `/api/admin/seed` with `replaceMode: metadata`, inserted welcome message via direct SQL on VPS as `author_id='ai'`. Room URL: https://mindforum.illinihunt.org/room/ai-in-teaching-research.
-- Next: Run live workshop session today. Visual sanity-check narrow-viewport at 375px in real Safari (drawer gestures, sticky composer with keyboard up). Set OpenAI monthly spend cap on the MindForum key. Send faculty invitation for `ai-ethics-exercise`.
+- Completed: (AM) Narrow-viewport pass on `/room/[id]` — drawer-based Participants/Files, single-column chat under 720px, `100dvh` for iOS keyboard. Auto-deployed. (PM-1) Spun up `ai-in-teaching-research` room for Gies AI Teaching Showcase + `innovation-transformation` room for group strategy-doc co-authoring; both seeded via `/api/admin/seed` with system prompt, welcome message inserted via direct SQL as `author_id='ai'`. (PM-2) Trimmed creator-owned-rooms design (PR #11) from a 678-line everything-PR (encryption + spend caps + usage tracking + privacy elevation) to a 407-line v1-minimum (allowlist + ownership + dashboard + audit log; v2 deferrals documented). Three rounds of Codex Plan Reviewer: R1 REJECT (5 findings) → R2 REJECT (3 findings) → R3 APPROVE. Squash-merged to main as documentation.
+- Next: Implement v1 creator-owned rooms per `docs/plans/2026-05-07-creator-rooms-v1-min.md`. Fresh branch off main; migrations v6/v7/v8 first; `/dashboard` + `/admin/users` second; verify against the doc's Acceptance Checklist. Outside that: visual narrow-viewport check at 375px in real Safari, OpenAI spend cap, `ai-ethics-exercise` invitation.
