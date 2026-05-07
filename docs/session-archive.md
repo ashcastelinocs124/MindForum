@@ -2,6 +2,10 @@
 
 Older session log entries from CLAUDE.md. Kept for reference; not loaded by `/start-session`.
 
+### 2026-05-02
+- Completed: Flattened nested folder layout — outer `~/research/mindforum/` was an empty git scaffold wrapping the real repo at `~/research/mindforum/MindForum/`. Moved 52K `rooms-backup-2026-04-21/` to a sibling dir, deleted outer empty `.git`/`.DS_Store`/duplicate `AGENTS.md`, then moved all `MindForum/` contents up one level. Repo now lives directly at `~/research/mindforum/`. Working tree clean, history intact, `main` up to date with origin.
+- Next: Set OpenAI monthly spend cap on the MindForum key (top of roadmap). Tail `/var/log/mindforum-refresh.log` for KB refresh cron health. Upload AI-Ready Illinois deck + Google doc to the new room.
+
 ### 2026-05-01
 - Completed: Pulled + deployed PR #8 (`@`-mention notifications + live coloring, by Ash). Stood up GitHub Actions auto-deploy: `scripts/deploy.sh` (pull → install → migrate → build → pm2 restart → localhost curl), dedicated `~/.ssh/mindforum_actions` ed25519 key locked to a forced `command=` on the VPS, three repo secrets (`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`). First push-triggered run failed (untracked bootstrap `deploy.sh` blocked the pull) — cleaned up and retried green; subsequent push of `AGENTS.md` confirmed ~32s end-to-end. Committed `AGENTS.md` (agent guardrails + memory lookup conventions).
 - Next: Set OpenAI monthly spend cap on the MindForum key. Tail `/var/log/mindforum-refresh.log` to confirm KB refresh cron health. Upload AI-Ready Illinois deck + Google doc to the new room.

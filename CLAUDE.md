@@ -55,7 +55,7 @@ Per-room setup artifacts live under `rooms/YYYY-MM-DD-<slug>/`:
 
 ## Current Focus
 
-Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Monitor early MSBAi engagement and the new `ai-ready-illinois-scoping` faculty room; tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the `/admin/rooms` dashboard. File-content preview UX assigned to student collaborator via [issue #5](https://github.com/gies-ai-experiments/MindForum/issues/5).
+Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2). Send faculty invitation for `ai-ethics-exercise` room. Monitor early MSBAi engagement and the new `ai-ready-illinois-scoping` faculty room; tail `/var/log/mindforum-refresh.log` for cron health. Operate live rooms via the `/admin/rooms` dashboard.
 
 ## Auto-deploy
 
@@ -84,14 +84,16 @@ Push to `main` (or run workflow_dispatch) → GitHub Actions SSHes to the VPS an
 - [x] Admin rooms dashboard `/admin/rooms` (sortable activity table, name filter, copy-link, cookie auth via existing `ADMIN_TOKEN`) — shipped 2026-04-28, [PR #6](https://github.com/gies-ai-experiments/MindForum/pull/6)
 - [x] `@`-mention notifications + live in-input mention coloring — [PR #8](https://github.com/gies-ai-experiments/MindForum/pull/8), shipped 2026-05-01
 - [x] GitHub Actions auto-deploy on push to `main` (restricted SSH key, idempotent `scripts/deploy.sh`, ~32s end-to-end) — shipped 2026-05-01
-- [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
-- [ ] Send faculty invitation for room `ai-ethics-exercise` (renamed from `-xM9Qgfk4g` 2026-05-06)
-- [ ] Collect feedback from first facilitated session; iterate on prompts
-- [ ] **2026-05-25 review:** four weeks after MSBAi rooms launch — check usage signal (faculty engagement vs lurking) to decide whether to keep brainstorm framing or convert to a K-ai-activity-mirror digest (see `.claude/plans/file-content-preview-ux.md` for the broader UX direction)
 - [x] File-content preview UX (modal with markdown render) — issue [#5](https://github.com/gies-ai-experiments/MindForum/issues/5), [PR #10](https://github.com/gies-ai-experiments/MindForum/pull/10), shipped 2026-05-06
+- [x] Multi-line chat input (TextareaAutosize, Enter/Shift+Enter, IME-safe) — shipped 2026-05-06
+- [x] File uploader attribution in Files panel + preview modal; seeded files attribute via email lookup to existing real participant — shipped 2026-05-06
+- [ ] Set OpenAI monthly spend cap on the dedicated MindForum key (defense-in-depth #2)
+- [ ] Send faculty invitation for room `ai-ethics-exercise`
+- [ ] Collect feedback from first facilitated session; iterate on prompts
+- [ ] **2026-05-25 review:** four weeks after MSBAi rooms launch — check usage signal (faculty engagement vs lurking) to decide whether to keep brainstorm framing or convert to a K-ai-activity-mirror digest
 
 ## Session Log
 
-### 2026-05-02
-- Completed: Flattened nested folder layout — outer `~/research/mindforum/` was an empty git scaffold wrapping the real repo at `~/research/mindforum/MindForum/`. Moved 52K `rooms-backup-2026-04-21/` to a sibling dir, deleted outer empty `.git`/`.DS_Store`/duplicate `AGENTS.md`, then moved all `MindForum/` contents up one level. Repo now lives directly at `~/research/mindforum/`. Working tree clean, history intact, `main` up to date with origin.
-- Next: Set OpenAI monthly spend cap on the MindForum key (top of roadmap). Tail `/var/log/mindforum-refresh.log` for KB refresh cron health. Upload AI-Ready Illinois deck + Google doc to the new room.
+### 2026-05-06
+- Completed: Renamed canonical AI-ethics room `-xM9Qgfk4g` → `ai-ethics-exercise` via in-place SQL transaction (insert new → repoint messages/participants/files → delete old; preserved 16 msgs + 2 files + 2 participants). Multi-line chat input shipped using `react-textarea-autosize` (Enter/Shift+Enter/IME-safe). File uploader attribution shipped: Files panel shows `Name · Date` (email on hover via title), preview modal shows full `KB · Uploaded by Name (email) · datetime`; preview API LEFT JOINs participants. Admin seed route now repoints seeded files to an existing real participant via email lookup (`SEED_UPLOADER_EMAIL` env, default `vishal@illinois.edu`); first attempt synthesised a `seed-uploader` participant row, codex-review caught it would pollute Participants sidebar/mentions/snapshot — replaced with email-lookup-only path that falls back to legacy `seed` marker if no match. Backfilled 34 existing seeded files on VPS to real Vishal participant ids per room. CLAUDE.md `Reseeding a room` section updated to new id.
+- Next: Set OpenAI monthly spend cap on the MindForum key (top of roadmap). Send faculty invitation for `ai-ethics-exercise`. Visual sanity-check chat textarea + file attribution at narrow viewport.
