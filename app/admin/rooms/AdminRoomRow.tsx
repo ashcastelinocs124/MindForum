@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import CopyLinkButton from "./CopyLinkButton";
+import { AnnounceModal } from "./AnnounceModal";
+import { RenameModal } from "./RenameModal";
+import { SystemPromptModal } from "./SystemPromptModal";
+import { JoinIdentityModal } from "./JoinIdentityModal";
 
 export type AdminRowState = {
   id: string;
@@ -205,22 +209,156 @@ export function AdminRoomRow({
   );
 }
 
-function ActionButtons(_props: {
+function ActionButtons({
+  row,
+  identity,
+  onIdentityChange,
+}: {
   row: AdminRowState;
   identity: { name: string; email: string } | null;
   onIdentityChange: (i: { name: string; email: string } | null) => void;
 }) {
-  // Wired in Task 24/25/26. Render a placeholder so the row layout is stable
-  // and the participants list shows up below it during early testing.
+  const closed = row.closedAt != null;
+  const [busy, setBusy] = useState<"toggle" | null>(null);
+  const [showAnnounce, setShowAnnounce] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [showIdentity, setShowIdentity] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function toggleClose() {
+    setBusy("toggle");
+    setActionError(null);
+    try {
+      const path = closed ? "reopen" : "close";
+      const res = await fetch(`/api/admin/rooms/${row.id}/${path}`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setActionError(body.error ?? `HTTP ${res.status}`);
+      }
+      // SSE will patch the row's closedAt — no optimistic update needed.
+    } catch (e) {
+      setActionError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function doJoin() {
+    if (!identity) {
+      setShowIdentity(true);
+      return;
+    }
+    // Use a real form POST so the 303 redirect + Set-Cookie sticks.
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = `/api/admin/rooms/${row.id}/join`;
+    document.body.appendChild(form);
+    form.submit();
+  }
+
   return (
-    <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>
-      (Actions wire up in the next commit — Close / Join / Announce / Rename / Prompt.)
-    </div>
+    <>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          onClick={() => void toggleClose()}
+          disabled={busy === "toggle"}
+          style={closed ? primaryAdmin() : dangerAdmin()}
+        >
+          {busy === "toggle" ? "…" : closed ? "Reopen" : "Close"}
+        </button>
+        <button onClick={doJoin} style={primaryAdmin()}>
+          Join
+        </button>
+        <button onClick={() => setShowAnnounce(true)} style={secondaryAdmin()}>
+          Announce
+        </button>
+        <button onClick={() => setShowRename(true)} style={secondaryAdmin()}>
+          Rename
+        </button>
+        <button onClick={() => setShowPrompt(true)} style={secondaryAdmin()}>
+          Prompt
+        </button>
+        {actionError && (
+          <span style={{ color: "#dc2626", fontSize: 12 }}>Error: {actionError}</span>
+        )}
+      </div>
+
+      {showAnnounce && (
+        <AnnounceModal roomId={row.id} onClose={() => setShowAnnounce(false)} />
+      )}
+      {showRename && (
+        <RenameModal
+          roomId={row.id}
+          initialName={row.name}
+          onClose={() => setShowRename(false)}
+        />
+      )}
+      {showPrompt && (
+        <SystemPromptModal roomId={row.id} onClose={() => setShowPrompt(false)} />
+      )}
+      {showIdentity && (
+        <JoinIdentityModal
+          onSaved={(i) => {
+            onIdentityChange(i);
+            setShowIdentity(false);
+            // Re-trigger Join now that identity is set.
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = `/api/admin/rooms/${row.id}/join`;
+            document.body.appendChild(form);
+            form.submit();
+          }}
+          onClose={() => setShowIdentity(false)}
+        />
+      )}
+    </>
   );
 }
 
+function primaryAdmin(): React.CSSProperties {
+  return {
+    background: "#13294B",
+    color: "white",
+    border: "none",
+    padding: "5px 12px",
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+}
+
+function secondaryAdmin(): React.CSSProperties {
+  return {
+    background: "white",
+    color: "#13294B",
+    border: "1px solid #d1d5db",
+    padding: "5px 12px",
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+}
+
+function dangerAdmin(): React.CSSProperties {
+  return {
+    background: "#fff",
+    color: "#b91c1c",
+    border: "1px solid #fca5a5",
+    padding: "5px 12px",
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
+}
+
 function ParticipantsList({
-  roomId: _roomId,
+  roomId,
   participants,
 }: {
   roomId: string;
@@ -232,6 +370,26 @@ function ParticipantsList({
   if (participants.length === 0) {
     return <div style={{ color: "#888", fontSize: 13 }}>No participants yet.</div>;
   }
+
+  async function toggleMute(p: AdminParticipant) {
+    await fetch(`/api/admin/rooms/${roomId}/participants/${p.id}/mute`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ muted: p.mutedAt == null }),
+    });
+  }
+  async function removeParticipant(p: AdminParticipant) {
+    if (
+      !confirm(
+        `Remove ${p.name} (${p.email}) from this room?\n\nThey can rejoin via email — this just kicks them from the current session.`,
+      )
+    )
+      return;
+    await fetch(`/api/admin/rooms/${roomId}/participants/${p.id}/remove`, {
+      method: "POST",
+    });
+  }
+
   return (
     <div>
       <div style={{ fontSize: 12, color: "#666", margin: "4px 0 6px" }}>
@@ -242,34 +400,71 @@ function ParticipantsList({
           <li
             key={p.id}
             style={{
-              padding: "4px 0",
+              padding: "5px 0",
               display: "flex",
-              gap: 12,
-              alignItems: "baseline",
+              gap: 10,
+              alignItems: "center",
               fontSize: 13,
+              flexWrap: "wrap",
             }}
           >
-            <span style={{ minWidth: 200 }}>
-              <span style={{ color: p.lastSeenAt && Date.now() - p.lastSeenAt < 60_000 ? "#1a7f37" : "#999" }}>
+            <span style={{ minWidth: 240 }}>
+              <span
+                style={{
+                  color:
+                    p.lastSeenAt && Date.now() - p.lastSeenAt < 60_000
+                      ? "#1a7f37"
+                      : "#999",
+                }}
+              >
                 ●
               </span>{" "}
               <strong>{p.name}</strong>{" "}
               <span style={{ color: "#888" }}>({p.email})</span>
             </span>
             <span style={{ color: "#888", fontSize: 12, flex: 1 }}>
-              last seen {p.lastSeenAt ? relTime(new Date(p.lastSeenAt).toISOString()).label : "never"}
+              last seen{" "}
+              {p.lastSeenAt
+                ? relTime(new Date(p.lastSeenAt).toISOString()).label
+                : "never"}
             </span>
             {p.mutedAt && (
               <span
-                style={{ background: "#fee2e2", color: "#991b1b", padding: "1px 6px", borderRadius: 4, fontSize: 11 }}
+                style={{
+                  background: "#fee2e2",
+                  color: "#991b1b",
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  fontSize: 11,
+                }}
               >
                 muted
               </span>
             )}
-            {/* Mute/Remove buttons wire up in Task 27. */}
+            <button onClick={() => void toggleMute(p)} style={tinyBtn()}>
+              {p.mutedAt ? "Unmute" : "Mute"}
+            </button>
+            <button
+              onClick={() => void removeParticipant(p)}
+              style={{ ...tinyBtn(), color: "#b91c1c", borderColor: "#fca5a5" }}
+            >
+              Remove
+            </button>
           </li>
         ))}
       </ul>
     </div>
   );
+}
+
+function tinyBtn(): React.CSSProperties {
+  return {
+    background: "white",
+    color: "#13294B",
+    border: "1px solid #d1d5db",
+    padding: "2px 8px",
+    borderRadius: 3,
+    fontSize: 11,
+    cursor: "pointer",
+  };
 }
