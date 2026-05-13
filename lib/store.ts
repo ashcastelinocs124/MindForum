@@ -806,7 +806,9 @@ export async function getRecentChatMessages(
  */
 export function snapshot(
   room: Room,
-  reactionsByMsg?: Map<string, ReactionSummary[]>
+  reactionsByMsg?: Map<string, ReactionSummary[]>,
+  openPolls: OpenPollView[] = [],
+  recentClosedPolls: ClosedPollView[] = [],
 ) {
   return {
     id: room.id,
@@ -818,6 +820,8 @@ export function snapshot(
       : room.messages,
     files: room.files.map(({ extractedText: _drop, selected: _sel, ...rest }) => rest),
     selectedFileIds: room.files.filter((f) => f.selected).map((f) => f.id),
+    openPolls,
+    recentClosedPolls,
   };
 }
 
