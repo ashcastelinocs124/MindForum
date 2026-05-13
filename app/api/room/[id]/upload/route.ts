@@ -4,6 +4,7 @@ import { broadcast } from "@/lib/sse";
 import { parseFile } from "@/lib/parse";
 import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { requireRoomParticipant } from "@/lib/auth-helpers";
+import { roomIsClosed } from "@/lib/room-state";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
@@ -18,6 +19,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   if (!(await roomExists(id))) {
     return NextResponse.json({ error: "room_not_found" }, { status: 404 });
+  }
+  if (await roomIsClosed(id)) {
+    return NextResponse.json({ error: "room_closed" }, { status: 410 });
   }
 
   const auth = await requireRoomParticipant(req, id);
