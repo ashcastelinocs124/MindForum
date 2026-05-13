@@ -1013,6 +1013,7 @@ export type RoomActivityRow = {
   lastMessageAt: Date | null;
   totalParticipants: number;
   fileCount: number;
+  closedAt: Date | null;
 };
 
 export async function adminListRoomsWithActivity(opts: {
@@ -1028,6 +1029,7 @@ export async function adminListRoomsWithActivity(opts: {
       r.id,
       r.name,
       r.created_at,
+      r.closed_at,
       COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '24 hours') AS msgs_24h,
       COUNT(m.id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days')   AS msgs_7d,
       COUNT(DISTINCT m.author_id) FILTER (WHERE m.created_at > NOW() - INTERVAL '7 days' AND m.author_id != 'ai') AS participants_7d,
@@ -1044,6 +1046,7 @@ export async function adminListRoomsWithActivity(opts: {
     id: string;
     name: string;
     created_at: Date;
+    closed_at: Date | null;
     msgs_24h: string;
     msgs_7d: string;
     participants_7d: string;
@@ -1055,6 +1058,7 @@ export async function adminListRoomsWithActivity(opts: {
     id: r.id,
     name: r.name,
     createdAt: r.created_at,
+    closedAt: r.closed_at,
     msgs24h: Number(r.msgs_24h),
     msgs7d: Number(r.msgs_7d),
     participants7d: Number(r.participants_7d),
