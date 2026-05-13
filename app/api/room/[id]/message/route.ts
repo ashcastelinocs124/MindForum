@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   appendMessage,
-  getParticipant,
   getRecentMessages,
   getSelectedFiles,
   roomExists,
@@ -12,6 +11,7 @@ import { query } from "@/lib/db";
 import { broadcast } from "@/lib/sse";
 import { chatReplyStream } from "@/lib/openai";
 import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
+import { requireRoomParticipant } from "@/lib/auth-helpers";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
@@ -27,9 +27,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "room_not_found" }, { status: 404 });
   }
 
-  const pid = req.cookies.get(`mindforum_pid_${id}`)?.value;
-  const participant = pid ? await getParticipant(id, pid) : null;
-  if (!participant) return NextResponse.json({ error: "not_joined" }, { status: 401 });
+  const auth = await requireRoomParticipant(req, id);
+  if (!auth.ok) return auth.response;
+  const participant = auth.participant;
 
   const body = await req.json().catch(() => ({}));
   const content = typeof body.content === "string" ? body.content.trim() : "";
