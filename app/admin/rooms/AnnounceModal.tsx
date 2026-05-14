@@ -88,12 +88,13 @@ export function AnnounceModal({
 
 function primaryBtn(): React.CSSProperties {
   return {
-    background: "#13294B",
+    background: "var(--orange)",
     color: "white",
     border: "none",
-    padding: "6px 14px",
-    borderRadius: 4,
+    padding: "8px 18px",
+    borderRadius: 6,
     fontWeight: 600,
     cursor: "pointer",
+    boxShadow: "0 1px 2px rgba(232,74,39,0.25)",
   };
 }

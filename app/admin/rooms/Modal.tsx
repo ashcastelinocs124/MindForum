@@ -51,17 +51,27 @@ export function Modal({
         ref={ref}
         style={{
           background: "white",
-          borderRadius: 8,
-          padding: 20,
+          borderRadius: 10,
+          padding: 22,
           minWidth: 360,
           maxWidth: 640,
           width: "92%",
           maxHeight: "85vh",
           overflowY: "auto",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+          boxShadow: "0 20px 40px rgba(19,41,75,0.15), 0 4px 12px rgba(19,41,75,0.1)",
+          borderTop: "3px solid var(--orange)",
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 12 }}>{title}</div>
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: 17,
+            marginBottom: 14,
+            color: "var(--navy)",
+          }}
+        >
+          {title}
+        </div>
         {children}
       </div>
     </div>

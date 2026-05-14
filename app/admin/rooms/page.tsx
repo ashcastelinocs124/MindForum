@@ -55,45 +55,133 @@ export default async function AdminRoomsPage({
   return (
     <main
       style={{
-        maxWidth: 1100,
-        margin: "2rem auto",
-        padding: "0 16px",
         fontFamily: "system-ui",
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #f8fafc 0%, #ffffff 200px)",
       }}
     >
-      <h1>Rooms ({rows.length})</h1>
-      <form method="GET" action="/admin/rooms" style={{ marginBottom: 12 }}>
-        <input type="hidden" name="sort" value={sort.column} />
-        <input type="hidden" name="dir" value={sort.direction.toLowerCase()} />
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="filter by name…"
-          style={{ padding: 6, width: 260 }}
-        />
-        <button type="submit" style={{ marginLeft: 6 }}>
-          Filter
-        </button>
-        {q && (
-          <a href="/admin/rooms" style={{ marginLeft: 8 }}>
-            clear
-          </a>
+      <header
+        style={{
+          background:
+            "linear-gradient(135deg, var(--navy) 0%, #1f3a68 100%)",
+          color: "white",
+          padding: "32px 0 34px",
+          borderBottom: "3px solid var(--orange)",
+          boxShadow: "0 2px 8px rgba(19,41,75,0.08)",
+        }}
+      >
+        <div style={{ padding: "0 40px" }}>
+          <div
+            style={{
+              fontSize: 11,
+              color: "rgba(255,255,255,0.55)",
+              textTransform: "uppercase",
+              letterSpacing: 2,
+              fontWeight: 600,
+              marginBottom: 6,
+            }}
+          >
+            MindForum
+          </div>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 44,
+              fontWeight: 800,
+              letterSpacing: -0.5,
+              lineHeight: 1.05,
+              textTransform: "uppercase",
+              color: "var(--orange)",
+            }}
+          >
+            Facilitator Console
+          </h1>
+          <div style={{ marginTop: 10, fontSize: 13, color: "rgba(255,255,255,0.75)" }}>
+            {rows.length} {rows.length === 1 ? "room" : "rooms"}
+            {identity && (
+              <>
+                {" · joined as "}
+                <span style={{ color: "var(--orange)", fontWeight: 700 }}>
+                  {identity.name}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div style={{ maxWidth: 1100, margin: "1.5rem auto", padding: "0 24px" }}>
+        <form
+          method="GET"
+          action="/admin/rooms"
+          style={{
+            marginBottom: 16,
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
+          <input type="hidden" name="sort" value={sort.column} />
+          <input type="hidden" name="dir" value={sort.direction.toLowerCase()} />
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="🔍 Filter rooms by name…"
+            style={{
+              padding: "8px 12px",
+              width: 320,
+              fontSize: 14,
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              outline: "none",
+              background: "white",
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: "8px 16px",
+              background: "var(--navy)",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Filter
+          </button>
+          {q && (
+            <a
+              href="/admin/rooms"
+              style={{
+                marginLeft: 4,
+                fontSize: 13,
+                color: "var(--orange)",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              clear
+            </a>
+          )}
+        </form>
+        {initialRows.length === 0 ? (
+          <p style={{ color: "#64748b" }}>
+            No rooms match. Seed one with <code>scripts/seed-msba-rooms.py</code>.
+          </p>
+        ) : (
+          <AdminRoomsTable
+            initialRows={initialRows}
+            origin={origin}
+            sort={sort}
+            q={q}
+            initialIdentity={identity}
+          />
         )}
-      </form>
-      {initialRows.length === 0 ? (
-        <p>
-          No rooms match. Seed one with <code>scripts/seed-msba-rooms.py</code>.
-        </p>
-      ) : (
-        <AdminRoomsTable
-          initialRows={initialRows}
-          origin={origin}
-          sort={sort}
-          q={q}
-          initialIdentity={identity}
-        />
-      )}
+      </div>
     </main>
   );
 }

@@ -97,13 +97,14 @@ export function SystemPromptModal({
           onClick={() => void save()}
           disabled={!canSave}
           style={{
-            background: "#13294B",
+            background: canSave ? "var(--orange)" : "#cbd5e1",
             color: "white",
             border: "none",
-            padding: "6px 14px",
-            borderRadius: 4,
+            padding: "8px 18px",
+            borderRadius: 6,
             fontWeight: 600,
             cursor: canSave ? "pointer" : "default",
+            boxShadow: canSave ? "0 1px 2px rgba(232,74,39,0.25)" : "none",
           }}
         >
           {saving ? "Saving…" : "Save"}

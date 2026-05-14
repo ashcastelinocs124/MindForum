@@ -122,19 +122,21 @@ export function AdminRoomRow({
 
   const closed = row.closedAt != null;
   const t = relTime(row.lastMessageAt);
+  // Brand-aligned activity dots: green = live, orange = recent, gray = idle.
   const dotColor =
-    t.dot === "green" ? "#1a7f37" : t.dot === "yellow" ? "#bf8700" : "#999";
+    t.dot === "green" ? "#16a34a" : t.dot === "yellow" ? "var(--orange)" : "#94a3b8";
   const url = `${origin}/room/${row.id}`;
+  const cellStyle: React.CSSProperties = {
+    padding: "12px",
+    borderBottom: "1px solid #f1f5f9",
+    background: closed ? "#fff7ed" : isExpanded ? "rgba(19,41,75,0.03)" : "white",
+    transition: "background 120ms",
+  };
 
   return (
     <>
-      <tr
-        style={{
-          borderBottom: "1px solid #f0f0f0",
-          background: closed ? "#fafafa" : undefined,
-        }}
-      >
-        <td style={{ padding: 8 }}>
+      <tr>
+        <td style={cellStyle}>
           <button
             onClick={onToggle}
             aria-expanded={isExpanded}
@@ -142,35 +144,74 @@ export function AdminRoomRow({
             style={{
               marginRight: 8,
               border: "none",
-              background: "transparent",
+              background: isExpanded ? "var(--navy)" : "transparent",
+              color: isExpanded ? "white" : "var(--navy)",
               cursor: "pointer",
-              fontSize: 14,
+              fontSize: 12,
+              fontWeight: 700,
+              width: 22,
+              height: 22,
+              borderRadius: 4,
+              lineHeight: 1,
+              verticalAlign: "middle",
             }}
           >
             {isExpanded ? "▾" : "▸"}
           </button>
-          <a href={`/room/${row.id}`} target="_blank" rel="noreferrer">
+          <a
+            href={`/room/${row.id}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "var(--navy)", fontWeight: 600, textDecoration: "none" }}
+          >
             {row.name}
           </a>
-          {closed && (
-            <span
-              style={{
-                marginLeft: 8,
-                padding: "1px 8px",
-                background: "#e5e7eb",
-                color: "#374151",
-                borderRadius: 4,
-                fontSize: 11,
-                fontWeight: 600,
-                verticalAlign: "middle",
-              }}
-            >
-              CLOSED
-            </span>
-          )}
-          <div style={{ fontSize: 11, color: "#888", marginLeft: 22 }}>{row.id}</div>
+          <span style={{ marginLeft: 8 }}>
+            {closed ? (
+              <span
+                style={{
+                  padding: "2px 8px",
+                  background: "var(--orange)",
+                  color: "white",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  verticalAlign: "middle",
+                }}
+              >
+                CLOSED
+              </span>
+            ) : (
+              <span
+                style={{
+                  padding: "2px 8px",
+                  background: "rgba(22,163,74,0.12)",
+                  color: "#15803d",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: 0.5,
+                  verticalAlign: "middle",
+                }}
+              >
+                OPEN
+              </span>
+            )}
+          </span>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#94a3b8",
+              marginLeft: 30,
+              marginTop: 2,
+              fontFamily: "ui-monospace, monospace",
+            }}
+          >
+            {row.id}
+          </div>
         </td>
-        <td style={{ padding: 8 }}>
+        <td style={cellStyle}>
           <span
             style={{
               display: "inline-block",
@@ -178,27 +219,41 @@ export function AdminRoomRow({
               height: 8,
               borderRadius: 4,
               background: dotColor,
-              marginRight: 6,
+              marginRight: 8,
+              boxShadow: t.dot === "green" ? "0 0 0 3px rgba(22,163,74,0.15)" : "none",
             }}
           />
-          {t.label}
+          <span style={{ fontSize: 13, color: "#475569" }}>{t.label}</span>
         </td>
-        <td style={{ padding: 8, textAlign: "right" }}>{row.msgs24h}</td>
-        <td style={{ padding: 8, textAlign: "right" }}>
-          {row.msgs7d} / {row.participants7d}
+        <td style={{ ...cellStyle, textAlign: "right", fontWeight: row.msgs24h > 0 ? 600 : 400, color: row.msgs24h > 0 ? "var(--navy)" : "#94a3b8" }}>
+          {row.msgs24h}
         </td>
-        <td style={{ padding: 8, textAlign: "right" }}>{row.fileCount}</td>
-        <td style={{ padding: 8 }}>{row.createdAt.slice(0, 10)}</td>
-        <td style={{ padding: 8 }}>
+        <td style={{ ...cellStyle, textAlign: "right", color: "#475569" }}>
+          {row.msgs7d} <span style={{ color: "#94a3b8" }}>/ {row.participants7d}</span>
+        </td>
+        <td style={{ ...cellStyle, textAlign: "right", color: row.fileCount > 0 ? "#475569" : "#94a3b8" }}>
+          {row.fileCount}
+        </td>
+        <td style={{ ...cellStyle, color: "#64748b", fontSize: 12 }}>
+          {row.createdAt.slice(0, 10)}
+        </td>
+        <td style={cellStyle}>
           <CopyLinkButton url={url} />
         </td>
       </tr>
 
       {isExpanded && (
         <tr>
-          <td colSpan={7} style={{ padding: "12px 16px 16px 30px", background: "#fcfcfc" }}>
-            <div style={{ marginBottom: 10 }}>
-              {/* Action buttons land in Task 24/25/26 — wired below. */}
+          <td
+            colSpan={7}
+            style={{
+              padding: "16px 18px 18px 40px",
+              background: "rgba(19,41,75,0.04)",
+              borderBottom: "1px solid #e2e8f0",
+              borderLeft: "3px solid var(--orange)",
+            }}
+          >
+            <div style={{ marginBottom: 14 }}>
               <ActionButtons row={row} identity={identity} onIdentityChange={onIdentityChange} />
             </div>
             <ParticipantsList roomId={row.id} participants={participants} />
@@ -319,25 +374,28 @@ function ActionButtons({
 }
 
 function primaryAdmin(): React.CSSProperties {
+  // Orange CTA — high-signal "do this now" action (Join, primary save).
   return {
-    background: "#13294B",
+    background: "var(--orange)",
     color: "white",
     border: "none",
-    padding: "5px 12px",
-    borderRadius: 4,
+    padding: "6px 14px",
+    borderRadius: 6,
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
+    boxShadow: "0 1px 2px rgba(232,74,39,0.25)",
   };
 }
 
 function secondaryAdmin(): React.CSSProperties {
+  // Navy-outlined — neutral utility action.
   return {
     background: "white",
-    color: "#13294B",
-    border: "1px solid #d1d5db",
-    padding: "5px 12px",
-    borderRadius: 4,
+    color: "var(--navy)",
+    border: "1px solid #cbd5e1",
+    padding: "6px 14px",
+    borderRadius: 6,
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
@@ -345,12 +403,13 @@ function secondaryAdmin(): React.CSSProperties {
 }
 
 function dangerAdmin(): React.CSSProperties {
+  // Orange danger — closes/locks the room.
   return {
-    background: "#fff",
-    color: "#b91c1c",
-    border: "1px solid #fca5a5",
-    padding: "5px 12px",
-    borderRadius: 4,
+    background: "white",
+    color: "var(--orange)",
+    border: "1px solid var(--orange)",
+    padding: "6px 14px",
+    borderRadius: 6,
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
