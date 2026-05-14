@@ -9,6 +9,7 @@
     "migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.53.1",
     "mammoth": "^1.8.0",
     "nanoid": "^5.0.7",
     "next": "^15.3.1",

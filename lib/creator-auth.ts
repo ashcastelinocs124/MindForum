@@ -13,6 +13,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import * as Sentry from "@sentry/nextjs";
 import { query } from "./db";
 import { isAdmin } from "./admin-auth";
 import {
@@ -242,6 +243,7 @@ export function httpErrorResponse(err: unknown): NextResponse {
     return NextResponse.json({ error: err.code }, { status: err.status });
   }
   console.error("unexpected route error:", err);
+  Sentry.captureException(err);
   return NextResponse.json({ error: "internal" }, { status: 500 });
 }
 
