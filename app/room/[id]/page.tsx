@@ -48,7 +48,7 @@ type Msg = {
   authorName: string;
   content: string;
   createdAt: number;
-  kind?: "chat" | "brief";
+  kind?: "chat" | "brief" | "system";
   reactions?: Reaction[];
   editedAt?: number | null;
 };
@@ -90,6 +90,7 @@ type Snapshot = {
   id: string;
   name: string;
   systemPrompt?: string;
+  closedAt: number | null;
   participants: Participant[];
   messages: Msg[];
   files: PublicFile[];
@@ -481,6 +482,16 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
           : s,
       );
     });
+    es.addEventListener("room_closed", () => {
+      setState((s) => (s ? { ...s, closedAt: Date.now() } : s));
+    });
+    es.addEventListener("room_reopened", () => {
+      setState((s) => (s ? { ...s, closedAt: null } : s));
+    });
+    es.addEventListener("room_renamed", (ev) => {
+      const { name: newName } = JSON.parse((ev as MessageEvent).data) as { name: string };
+      setState((s) => (s ? { ...s, name: newName } : s));
+    });
     es.onerror = () => {
       /* EventSource auto-reconnects */
     };
@@ -564,6 +575,10 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
   async function submitDraft() {
     const content = draft.trim();
     if (!content) return;
+    if (state?.closedAt != null) {
+      // Composer is disabled in UI but guard here too.
+      return;
+    }
     // Intercept /poll to open the launch modal instead of posting a chat message.
     if (content === "/poll" || content.startsWith("/poll ")) {
       setDraft("");
@@ -1099,9 +1114,28 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
             )}
             <div ref={chatBottomRef} />
           </div>
+          {state.closedAt != null && (
+            <div
+              role="status"
+              style={{
+                margin: "8px 0 0",
+                padding: "10px 14px",
+                background: "#fff7ed",
+                borderLeft: "3px solid var(--orange)",
+                borderRadius: 4,
+                color: "#7c2d12",
+                fontSize: 13,
+              }}
+            >
+              <strong>This room is closed.</strong> New messages, polls, and uploads
+              are disabled. Chat history stays readable.
+            </div>
+          )}
           {(() => {
             const aiMention = /^\s*@ai\b/i.test(draft);
+            const pollCommand = /^\/poll(\s|$)/.test(draft);
             const pills = detectMentionPills(draft, state.participants, participantId);
+            const isClosed = state.closedAt != null;
             return (
               <form
                 onSubmit={send}
@@ -1110,7 +1144,10 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                   gap: 6,
                   paddingTop: 12,
                   borderTop: "1px solid var(--border)",
+                  opacity: isClosed ? 0.55 : 1,
+                  pointerEvents: isClosed ? "none" : "auto",
                 }}
+                aria-disabled={isClosed}
               >
                 {pills.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -1160,8 +1197,16 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
                         ...inp(),
                         width: "100%",
                         display: "block",
-                        borderColor: aiMention ? "var(--orange)" : "var(--border)",
-                        boxShadow: aiMention ? "0 0 0 3px rgba(232,74,39,0.15)" : "none",
+                        borderColor: aiMention
+                          ? "var(--orange)"
+                          : pollCommand
+                            ? "var(--navy)"
+                            : "var(--border)",
+                        boxShadow: aiMention
+                          ? "0 0 0 3px rgba(232,74,39,0.15)"
+                          : pollCommand
+                            ? "0 0 0 3px rgba(19,41,75,0.15)"
+                            : "none",
                         outline: "none",
                         transition: "border-color 120ms, box-shadow 120ms",
                         background: "transparent",
@@ -1531,6 +1576,7 @@ function MsgView({
   onQuote?: (m: Msg) => void;
 }) {
   if (m.kind === "brief") return <BriefView m={m} />;
+  if (m.kind === "system") return <SystemAnnouncementView m={m} />;
   const isAi = m.authorId === "ai";
 
   const [hover, setHover] = useState(false);
@@ -2113,10 +2159,24 @@ function MentionPill({ pill }: { pill: Pill }) {
 // so glyph widths stay aligned with the underlying transparent <input>.
 function renderInputMentions(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  const regex = /@[\w-]+/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
+  let cursor = 0;
   let i = 0;
+
+  // Leading /poll command — recognized only at the very start, same rule as the intercept.
+  const pollMatch = text.match(/^\/poll(?=\s|$)/);
+  if (pollMatch) {
+    parts.push(
+      <span key={`im-${i++}`} style={{ color: "var(--navy)", fontWeight: 600 }}>
+        {pollMatch[0]}
+      </span>,
+    );
+    cursor = pollMatch[0].length;
+  }
+
+  const regex = /@[\w-]+/g;
+  regex.lastIndex = cursor;
+  let last = cursor;
+  let match: RegExpExecArray | null;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index));
     const isAi = /^@ai$/i.test(match[0]);
@@ -2230,6 +2290,27 @@ function briefToMarkdown(brief: BriefData, createdAt: number): string {
     lines.push(``);
   }
   return lines.join("\n");
+}
+
+function SystemAnnouncementView({ m }: { m: Msg }) {
+  return (
+    <div
+      style={{
+        margin: "8px 0",
+        padding: "8px 12px",
+        borderLeft: "3px solid var(--navy)",
+        background: "rgba(19,41,75,0.05)",
+        borderRadius: 4,
+        fontStyle: "italic",
+        fontSize: 14,
+      }}
+    >
+      <span style={{ fontWeight: 600, fontStyle: "normal", marginRight: 6 }}>
+        📢 Facilitator:
+      </span>
+      <span>{m.content}</span>
+    </div>
+  );
 }
 
 function BriefView({ m }: { m: Msg }) {

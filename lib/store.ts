@@ -832,6 +832,7 @@ export function snapshot(
     id: room.id,
     name: room.name,
     systemPrompt: room.systemPrompt,
+    closedAt: room.closedAt,
     participants: room.participants,
     messages: reactionsByMsg
       ? room.messages.map((m) => ({ ...m, reactions: reactionsByMsg.get(m.id) ?? [] }))
