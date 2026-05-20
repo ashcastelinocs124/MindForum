@@ -14,35 +14,118 @@
 
 ## File Structure
 
-- **Modify** `app/api/room/[id]/route.ts` — add archived-only guard to the `DELETE` handler.
+- **Modify** `lib/store.ts` — `hardDeleteRoom` enforces archived-only atomically and returns a discriminated result.
+- **Modify** `app/api/room/[id]/route.ts` — `DELETE` handler maps the discriminated result to `200` / `404` / `409`.
 - **Create** `app/admin/rooms/RoomActions.tsx` — client component with archive / restore / type-to-confirm-delete controls.
 - **Modify** `app/admin/rooms/page.tsx` — import `RoomActions`, add the `Actions` column header and per-row cell.
 
-No store, schema, or auth changes.
+No schema or auth changes.
 
 ---
 
-## Task 1: Server guard — refuse hard-delete on non-archived rooms
+## Task 1: Atomic archived-only hard-delete guard
 
 **Files:**
+- Modify: `lib/store.ts` (the `hardDeleteRoom` function, currently near line 1100)
 - Modify: `app/api/room/[id]/route.ts` (the `DELETE` handler, currently lines 100-121)
 
-The current `DELETE` handler deletes any room. The "delete only archived rooms" rule must be enforced server-side, not just hidden in the UI. `query` is already imported at the top of this file (used by `PATCH`).
+The "delete only archived rooms" rule must be enforced server-side **and
+atomically**. A route-level `SELECT archived_at` pre-check followed by a
+separate delete leaves a TOCTOU window (a creator could restore the room in
+between). Instead, push the rule into `hardDeleteRoom`'s existing transaction:
+the `DELETE` itself becomes conditional on `archived_at IS NOT NULL`, which is
+the single, race-free authority on the rule.
 
-- [ ] **Step 1: Add the archived-only guard to the `DELETE` handler**
+Both files must change together — `hardDeleteRoom`'s return type changes from
+`snapshot | null` to a discriminated result, and the route is its only caller.
+One commit.
 
-Replace the entire existing `DELETE` function (the block starting at `export async function DELETE`) with:
+- [ ] **Step 1: Rewrite `hardDeleteRoom` in `lib/store.ts`**
+
+Replace the entire existing `hardDeleteRoom` function (and its doc comment)
+with:
 
 ```ts
 /**
- * DELETE: super-admin hard-delete. Cascades to messages / participants /
- * files / reactions via FK ON DELETE CASCADE on rooms.id. Audit row is
- * written *after* the delete returns so the snapshot metadata reflects the
- * row that just disappeared (the audit_log table has no FK on room_id by
- * design — entries survive hard-delete).
+ * Hard-delete a room. ONLY deletes archived rooms — the conditional DELETE
+ * (`archived_at IS NOT NULL`) is the single, atomic authority on the
+ * archived-only rule, so there is no check-then-act race.
  *
- * Refused on active rooms (`409 not_archived`) — a room must be archived
- * first. Archive is the recoverable staging step before permanent deletion.
+ * Cascade hits messages, message_reactions, participants, room_files via the
+ * existing ON DELETE CASCADE on `rooms.id`. Audit log rows survive (no FK on
+ * `audit_log.room_id` is intentional — see schema v8 comment).
+ *
+ * Returns a discriminated result:
+ *  - { ok: false, reason: "not_found" }    — no such room
+ *  - { ok: false, reason: "not_archived" } — room exists but is active
+ *  - { ok: true, ... }                     — room deleted
+ */
+export async function hardDeleteRoom(id: string): Promise<
+  | {
+      ok: true;
+      slug: string;
+      name: string;
+      ownerId: string;
+      messageCount: number;
+      fileCount: number;
+    }
+  | { ok: false; reason: "not_found" | "not_archived" }
+> {
+  return tx(async (client) => {
+    const meta = await client.query<{
+      id: string;
+      name: string;
+      owner_id: string;
+      message_count: string;
+      file_count: string;
+    }>(
+      `SELECT
+         r.id,
+         r.name,
+         r.owner_id,
+         (SELECT COUNT(*)::text FROM messages   m WHERE m.room_id = r.id) AS message_count,
+         (SELECT COUNT(*)::text FROM room_files f WHERE f.room_id = r.id) AS file_count
+       FROM rooms r WHERE r.id = $1`,
+      [id]
+    );
+    if (meta.rowCount === 0) return { ok: false, reason: "not_found" };
+    const m = meta.rows[0];
+
+    // Conditional delete IS the archived-only enforcement: an active room
+    // matches 0 rows. Evaluated at delete time inside the transaction.
+    const del = await client.query(
+      `DELETE FROM rooms WHERE id = $1 AND archived_at IS NOT NULL`,
+      [id]
+    );
+    if ((del.rowCount ?? 0) === 0) return { ok: false, reason: "not_archived" };
+
+    return {
+      ok: true,
+      slug: m.id,
+      name: m.name,
+      ownerId: m.owner_id,
+      messageCount: parseInt(m.message_count, 10),
+      fileCount: parseInt(m.file_count, 10),
+    };
+  });
+}
+```
+
+(`tx` is already imported in `lib/store.ts` — the current `hardDeleteRoom`
+already uses it.)
+
+- [ ] **Step 2: Rewrite the `DELETE` handler in `app/api/room/[id]/route.ts`**
+
+Replace the entire existing `DELETE` function (the block starting at
+`export async function DELETE`, currently lines 100-121) with:
+
+```ts
+/**
+ * DELETE: super-admin hard-delete. Refused on active rooms (`409
+ * not_archived`) — a room must be archived first; archive is the recoverable
+ * staging step. The archived-only rule is enforced atomically inside
+ * `hardDeleteRoom` (see lib/store.ts). Audit row is written after the delete
+ * returns so the snapshot metadata reflects the row that just disappeared.
  *
  * Creator path is NOT supported here. Creators archive; only super-admin
  * destroys.
@@ -53,21 +136,18 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   }
   try {
     const { id } = await ctx.params;
-
-    // Gate: room must exist and be archived. A single lookup distinguishes
-    // 404 (no row) from 409 (active room) before any destructive call.
-    const existing = await query<{ archived_at: Date | null }>(
-      `SELECT archived_at FROM rooms WHERE id = $1`,
-      [id]
-    );
-    const cur = existing.rows[0];
-    if (!cur) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    if (cur.archived_at === null) {
-      return NextResponse.json({ error: "not_archived" }, { status: 409 });
+    const result = await hardDeleteRoom(id);
+    if (!result.ok) {
+      const status = result.reason === "not_found" ? 404 : 409;
+      return NextResponse.json({ error: result.reason }, { status });
     }
-
-    const snap = await hardDeleteRoom(id);
-    if (!snap) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const snap = {
+      slug: result.slug,
+      name: result.name,
+      ownerId: result.ownerId,
+      messageCount: result.messageCount,
+      fileCount: result.fileCount,
+    };
     const actor = await getActor();
     if (actor) {
       await logAudit({
@@ -84,16 +164,21 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+Note: do not remove the `query` import from this file — the `PATCH` handler
+above still uses it.
+
+- [ ] **Step 3: Typecheck**
 
 Run: `npm run build`
-Expected: build succeeds with no TypeScript errors. (`query`, `isAdmin`, `hardDeleteRoom`, `getActor`, `logAudit`, `httpErrorResponse` are all already imported in this file.)
+Expected: build succeeds with no TypeScript errors. (`isAdmin`,
+`hardDeleteRoom`, `getActor`, `logAudit`, `httpErrorResponse` are all already
+imported in `route.ts`.)
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add app/api/room/[id]/route.ts
-git commit -m "feat: refuse hard-delete on non-archived rooms (409 not_archived)"
+git add lib/store.ts app/api/room/[id]/route.ts
+git commit -m "feat: enforce archived-only hard-delete atomically in hardDeleteRoom"
 ```
 
 ---
@@ -345,10 +430,12 @@ git commit -m "feat: wire RoomActions column into /admin/rooms table"
 
 This feature is UI + a DB-dependent route; verification is a manual walk, consistent with how creator-rooms v1 was verified. Deploy first via the normal recipe (push to `main` triggers auto-deploy, or run the deploy steps in `CLAUDE.md`).
 
+**Do the whole browser walk on `/admin/rooms?archived=all`.** The page defaults to the Active filter (`resolveArchivedFilter` returns `"false"` for no param); on that default view an archived room drops out of the table entirely, so a status change cannot be observed in place. The `all` filter keeps every room visible regardless of status.
+
 - [ ] **Step 1: Archive an active room**
 
-On `/admin/rooms`, pick an `ACTIVE` test room, click **Archive**, accept the confirm.
-Expected: page reloads, the row's Status flips to `ARCHIVED`, and the Actions cell now shows **Restore** + **Delete**.
+On `/admin/rooms?archived=all`, pick an `ACTIVE` test room, click **Archive**, accept the confirm.
+Expected: page reloads, the row's Status flips to `ARCHIVED`, and the Actions cell now shows **Restore** + **Delete**. (The row stays visible because the filter is `all`.)
 
 - [ ] **Step 2: Restore it**
 
@@ -365,8 +452,8 @@ Expected: the **Delete permanently** button stays disabled (greyed, `not-allowed
 Type the exact room id, click **Delete permanently**.
 Expected: page reloads, the room is gone from the table. Confirm the audit row:
 
-Run on the VPS: `psql -U mindforum -d mindforum -c "SELECT action, room_id FROM audit_log WHERE action = 'room.hard_delete' ORDER BY created_at DESC LIMIT 1;"`
-Expected: a `room.hard_delete` row for the deleted room id.
+Run on the VPS: `psql -U mindforum -d mindforum -c "SELECT action, room_id FROM audit_log WHERE action = 'room.hard_delete' ORDER BY at DESC LIMIT 1;"`
+Expected: a `room.hard_delete` row for the deleted room id. (The `audit_log` timestamp column is `at`, not `created_at` — see `db/schema.sql`.)
 
 - [ ] **Step 5: Server guard — delete an active room via curl**
 

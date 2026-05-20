@@ -63,7 +63,7 @@ One instance per table row.
 Props:
 
 ```ts
-{ roomId: string; roomName: string; archived: boolean }
+{ roomId: string; archived: boolean }
 ```
 
 State: `busy: boolean`, `err: string | null`, `confirming: boolean`,
@@ -100,26 +100,42 @@ the `ArchiveControl` red palette — `#991b1b` text, `#fecaca` border).
 - Add `<th style={{ padding: 8 }}>Actions</th>` to the table header row,
   after the existing `Link` column.
 - Add a matching `<td style={{ padding: 8 }}>` per row rendering
-  `<RoomActions roomId={r.id} roomName={r.name} archived={r.archivedAt !== null} />`.
+  `<RoomActions roomId={r.id} archived={r.archivedAt !== null} />`.
 - Import `RoomActions` alongside the existing `CopyLinkButton` import.
 
-No change to `adminListRoomsWithActivity` — `r.id`, `r.name`, and
-`r.archivedAt` are already in the row shape.
+No change to `adminListRoomsWithActivity` — `r.id` and `r.archivedAt` are
+already in the row shape.
 
-### 3. Server guard — `DELETE /api/room/[id]` (`app/api/room/[id]/route.ts`)
+### 3. Atomic archived-only guard — `hardDeleteRoom` + `DELETE /api/room/[id]`
 
-The "delete only archived rooms" rule must be enforced server-side, not just
-hidden in the UI. The current `DELETE` handler deletes any room.
+The "delete only archived rooms" rule must be enforced server-side, **and
+enforced atomically**. A naive route-level pre-check (`SELECT archived_at`,
+then `hardDeleteRoom`) leaves a TOCTOU window: a creator could restore the
+room between the check and the delete, and the now-active room is destroyed
+anyway.
 
-Add a guard before `hardDeleteRoom`: look up the room's `archived_at`; if it
-is `null` (room is active), return `409 { error: "not_archived" }` and do not
-delete. If the room does not exist, the existing `404 not_found` path (from
-`hardDeleteRoom` returning no snapshot) still applies — order the new check so
-a missing room is not misreported as `not_archived`.
+Fix: push the rule into `hardDeleteRoom` itself (`lib/store.ts`), inside its
+existing transaction:
 
-Implementation note: a single `SELECT archived_at FROM rooms WHERE id = $1`
-distinguishes all three cases — no row → `404 not_found`; `archived_at IS NULL`
-→ `409 not_archived`; otherwise proceed to `hardDeleteRoom`.
+- The internal `DELETE` becomes conditional —
+  `DELETE FROM rooms WHERE id = $1 AND archived_at IS NOT NULL`.
+- The function returns a discriminated result instead of `snapshot | null`:
+  - `{ ok: false, reason: "not_found" }` — the metadata `SELECT` found no row.
+  - `{ ok: false, reason: "not_archived" }` — the row exists but the
+    conditional `DELETE` affected 0 rows (room is active).
+  - `{ ok: true, slug, name, ownerId, messageCount, fileCount }` — deleted.
+
+Because the conditional `DELETE` is the single authority on whether the room
+was archived, there is no window — the row's `archived_at` is evaluated at
+delete time within the transaction.
+
+The `DELETE /api/room/[id]` handler then switches on the result:
+`not_found` → `404 { error: "not_found" }`; `not_archived` →
+`409 { error: "not_archived" }`; `ok` → log `room.hard_delete` audit (metadata
+= the result fields minus `ok`) and return `200`.
+
+`hardDeleteRoom` has exactly one caller (this route handler), so the signature
+change is fully contained.
 
 No changes to the archive or restore endpoints.
 
@@ -157,15 +173,19 @@ super-admin on /admin/rooms  (ADMIN_TOKEN cookie)
 ## Testing
 
 Manual walk on the VPS, consistent with how creator-rooms v1 was verified
-(`curl` + browser):
+(`curl` + browser). **Do the walk on `/admin/rooms?archived=all`** — the page
+defaults to the Active filter, so an archived room would otherwise drop out of
+the table and the status change could not be observed in place.
 
-1. Archive an active room from `/admin/rooms` → row flips to `ARCHIVED`,
-   Restore + Delete buttons appear.
-2. Restore it → row flips back to `ACTIVE`, only Archive shows.
+1. On `/admin/rooms?archived=all`, archive an active room → row's Status flips
+   to `ARCHIVED`, Actions cell now shows Restore + Delete.
+2. Restore it → Status flips back to `ACTIVE`, Actions cell shows only Archive.
 3. On an archived room, click Delete, type the wrong id → Delete permanently
    button stays disabled.
 4. Type the correct id → confirm → room disappears from the table; verify the
-   `room.hard_delete` audit row exists (`psql`).
+   `room.hard_delete` audit row exists:
+   `psql -U mindforum -d mindforum -c "SELECT action, room_id FROM audit_log WHERE action = 'room.hard_delete' ORDER BY at DESC LIMIT 1;"`
+   (the `audit_log` timestamp column is `at`, not `created_at`).
 5. `curl -X DELETE` on an **active** room with the admin cookie → `409
    not_archived`; room still present.
 6. `curl -X DELETE` on a non-existent id → `404 not_found`.
