@@ -31,6 +31,7 @@ export async function attachRoomFile(input: AttachRoomFileInput) {
     sourceType: input.sourceType,
     sourceUrl: input.sourceUrl,
     sourceMeta: input.sourceMeta,
+    summary: null, // replaced with a generated summary in Task 5
   };
 
   await addFile(file);
