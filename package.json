@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "migrate": "node scripts/migrate.mjs"
+    "migrate": "node scripts/migrate.mjs",
+    "test": "node --import tsx --test lib/*.test.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
@@ -31,6 +32,7 @@
     "@types/pdf-parse": "^1.1.4",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.1.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.8.0"
   }
 }
