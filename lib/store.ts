@@ -41,6 +41,7 @@ export type Message = {
   kind?: "chat" | "brief" | "system";
   reactions?: ReactionSummary[];
   editedAt?: number | null;
+  groundingFiles?: string[] | null;
 };
 
 export type RoomFile = {
@@ -56,6 +57,7 @@ export type RoomFile = {
   sourceType: SourceType;
   sourceUrl: string | null;
   sourceMeta: SourceMeta;
+  summary: string | null;
 };
 
 export type Room = {
@@ -153,6 +155,7 @@ function toMessage(r: {
   kind: string;
   created_at: Date;
   edited_at?: Date | null;
+  grounding_files?: unknown;
 }): Message {
   return {
     id: r.id,
@@ -163,6 +166,9 @@ function toMessage(r: {
     createdAt: r.created_at.getTime(),
     kind: (r.kind as Message["kind"]) ?? "chat",
     editedAt: r.edited_at ? r.edited_at.getTime() : null,
+    groundingFiles: Array.isArray(r.grounding_files)
+      ? (r.grounding_files as unknown[]).filter((x): x is string => typeof x === "string")
+      : null,
   };
 }
 
@@ -179,6 +185,7 @@ type RoomFileRow = {
   source_type: SourceType | null;
   source_url: string | null;
   source_meta: SourceMeta;
+  summary: string | null;
 };
 
 function toRoomFile(r: RoomFileRow): RoomFile {
@@ -195,6 +202,7 @@ function toRoomFile(r: RoomFileRow): RoomFile {
     sourceType: isSourceType(r.source_type) ? r.source_type : "uploaded",
     sourceUrl: r.source_url,
     sourceMeta: validateSourceMeta(isSourceType(r.source_type) ? r.source_type : "uploaded", r.source_meta),
+    summary: r.summary,
   };
 }
 
@@ -358,15 +366,19 @@ export async function getRoom(id: string): Promise<Room | null> {
         kind: string;
         created_at: Date;
         edited_at: Date | null;
+        grounding_files: unknown;
       }>(
-        `SELECT id, room_id, author_id, author_name, content, kind, created_at, edited_at
+        // grounding_files included so the SSE snapshot carries the "checked the
+        // full text of X" caption on reload. AI-history SELECTs deliberately omit
+        // it — it must never re-feed into the model (see toMessage).
+        `SELECT id, room_id, author_id, author_name, content, kind, created_at, edited_at, grounding_files
          FROM messages WHERE room_id = $1
          ORDER BY created_at ASC, id ASC`,
         [id]
       ),
       client.query<RoomFileRow>(
         `SELECT id, room_id, name, mime, size_bytes, uploaded_by_id,
-                extracted_text, selected, uploaded_at, source_type, source_url, source_meta
+                extracted_text, selected, uploaded_at, source_type, source_url, source_meta, summary
          FROM room_files WHERE room_id = $1
          ORDER BY uploaded_at ASC`,
         [id]
@@ -540,6 +552,17 @@ export async function updateMessageContent(id: string, content: string): Promise
   await query(`UPDATE messages SET content = $2 WHERE id = $1`, [id, content]);
 }
 
+/** Persist which files the AI read in full for a reply (grounding caption). */
+export async function updateMessageGrounding(
+  id: string,
+  files: string[]
+): Promise<void> {
+  await query(`UPDATE messages SET grounding_files = $2 WHERE id = $1`, [
+    id,
+    JSON.stringify(files),
+  ]);
+}
+
 /**
  * Author-only edit. Returns the new edited_at on success, or null if the
  * message doesn't exist or the participant doesn't own it. Stamps edited_at
@@ -567,8 +590,8 @@ export async function editMessage(
 export async function addFile(file: RoomFile): Promise<void> {
   await query(
     `INSERT INTO room_files
-       (id, room_id, name, mime, size_bytes, uploaded_by_id, extracted_text, selected, uploaded_at, source_type, source_url, source_meta)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9 / 1000.0), $10, $11, $12)`,
+       (id, room_id, name, mime, size_bytes, uploaded_by_id, extracted_text, selected, uploaded_at, source_type, source_url, source_meta, summary)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9 / 1000.0), $10, $11, $12, $13)`,
     [
       file.id,
       file.roomId,
@@ -582,6 +605,7 @@ export async function addFile(file: RoomFile): Promise<void> {
       file.sourceType,
       file.sourceUrl,
       file.sourceMeta,
+      file.summary,
     ]
   );
 }
@@ -599,11 +623,23 @@ export async function setFileSelected(
   return (rowCount ?? 0) > 0;
 }
 
+/** Store/refresh a document's summary. Used at ingest and lazy backfill. */
+export async function setFileSummary(
+  roomId: string,
+  fileId: string,
+  summary: string
+): Promise<void> {
+  await query(
+    `UPDATE room_files SET summary = $3 WHERE room_id = $1 AND id = $2`,
+    [roomId, fileId, summary]
+  );
+}
+
 /** Fetch only the selected files' extracted text — for AI prompt assembly. */
 export async function getSelectedFiles(roomId: string): Promise<RoomFile[]> {
   const { rows } = await query<RoomFileRow>(
     `SELECT id, room_id, name, mime, size_bytes, uploaded_by_id,
-            extracted_text, selected, uploaded_at, source_type, source_url, source_meta
+            extracted_text, selected, uploaded_at, source_type, source_url, source_meta, summary
      FROM room_files
      WHERE room_id = $1 AND selected = TRUE
      ORDER BY uploaded_at ASC`,
@@ -1579,7 +1615,7 @@ export async function getRoomFileById(
 ): Promise<RoomFile | null> {
   const { rows } = await query<RoomFileRow>(
     `SELECT id, room_id, name, mime, size_bytes, uploaded_by_id,
-            extracted_text, selected, uploaded_at, source_type, source_url, source_meta
+            extracted_text, selected, uploaded_at, source_type, source_url, source_meta, summary
        FROM room_files WHERE room_id = $1 AND id = $2`,
     [roomId, fileId]
   );

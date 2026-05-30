@@ -129,6 +129,8 @@ export async function POST(req: NextRequest) {
         sourceType: "uploaded",
         sourceUrl: null,
         sourceMeta: null,
+        // Seeded files are summarized lazily on first @ai use (see message route).
+        summary: null,
       };
       await adminAddFile(rf);
       loaded.push({ name: fileName, path: sf.path, bytes: buf.length });

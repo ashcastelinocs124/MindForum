@@ -2,14 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   appendMessage,
   closeExpiredPolls,
+  getChatMessagesAfter,
+  getRecentChatMessages,
   getRecentMessages,
+  getRoomCatchupContext,
+  getRoomSummary,
   getSelectedFiles,
+  setFileSummary,
   updateMessageContent,
+  updateMessageGrounding,
   type Message,
 } from "@/lib/store";
-import { query } from "@/lib/db";
 import { broadcast } from "@/lib/sse";
-import { chatReplyStream } from "@/lib/openai";
+import { chatReplyStream, summarizeDocument } from "@/lib/openai";
+import { needsSummary } from "@/lib/doc-context";
+import { decideContextMode, renderRecapBlock, GATE, RECENT_WINDOW } from "@/lib/chat-context";
+import { refreshSummaryForReply } from "@/lib/recap";
 import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { assertActiveRoom, httpErrorResponse } from "@/lib/creator-auth";
 import { requireRoomParticipant } from "@/lib/auth-helpers";
@@ -113,21 +121,74 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     void (async () => {
       let lastFlush = Date.now();
       let dirty = false;
+      const grounded = new Set<string>(); // file names the AI read in full
       try {
-        const [history, selectedFiles, systemPromptRow] = await Promise.all([
-          getRecentMessages(id, 30),
+        const [ctx, selectedFiles] = await Promise.all([
+          getRoomCatchupContext(id),
           getSelectedFiles(id),
-          query<{ system_prompt: string }>(
-            `SELECT system_prompt FROM rooms WHERE id = $1`,
-            [id]
-          ),
         ]);
-        const systemPrompt = systemPromptRow.rows[0]?.system_prompt ?? "";
+        const systemPrompt = ctx?.systemPrompt ?? "";
 
-        // The stub AI msg is already in history from the earlier INSERT; strip it.
-        const priorHistory = history.filter((m) => m.id !== aiMsg.id);
+        // Lazy backfill: pre-existing / previously-failed files have summary=null.
+        await Promise.all(
+          selectedFiles.filter(needsSummary).map(async (f) => {
+            try {
+              const s = await summarizeDocument(f.name, f.extractedText);
+              if (s) {
+                await setFileSummary(id, f.id, s);
+                f.summary = s;
+              }
+            } catch (err) {
+              console.error("lazy summarize failed (using truncated full text):", err);
+            }
+          })
+        );
 
-        for await (const delta of chatReplyStream(priorHistory, selectedFiles, systemPrompt)) {
+        // Decide the conversation-context mode by room length. The stub AI msg is
+        // already in the table (kind:"chat", empty) — exclude it from the delta,
+        // the verbatim window, and the fold everywhere below.
+        const chatCount = Math.max(0, (ctx?.chatCount ?? 0) - 1);
+        if (chatCount <= GATE) {
+          const all = await getRecentMessages(id, GATE + 1);
+          windowMessages = all.filter((m) => m.id !== aiMsg.id);
+        } else {
+          try {
+            const stored = await getRoomSummary(id);
+            const deltaRaw = await getChatMessagesAfter(id, stored?.upToMsgId ?? null);
+            const delta = deltaRaw.filter((m) => m.id !== aiMsg.id);
+            const mode = decideContextMode({ chatCount, deltaSize: delta.length });
+
+            if (mode === "recap-nofold") {
+              windowMessages = delta; // ≤WINDOW new msgs; recap covers the rest
+              recapBlock = renderRecapBlock(
+                stored?.bullets ?? [],
+                stored?.pinnedFacts ?? { names: [], decisions: [], files: [] }
+              );
+            } else {
+              const fresh = await refreshSummaryForReply({
+                roomId: id,
+                systemPrompt,
+                selectedFileNames: ctx?.selectedFileNames ?? [],
+                excludeMsgId: aiMsg.id,
+              });
+              const recentRaw = await getRecentChatMessages(id, RECENT_WINDOW + 1);
+              windowMessages = recentRaw
+                .filter((m) => m.id !== aiMsg.id)
+                .slice(-RECENT_WINDOW);
+              recapBlock = renderRecapBlock(fresh.bullets, fresh.pinnedFacts);
+            }
+          } catch (err) {
+            // Recap failed → degrade to today's raw path. Never block a reply.
+            const all = await getRecentMessages(id, GATE + 1);
+            windowMessages = all.filter((m) => m.id !== aiMsg.id);
+            recapBlock = "";
+          }
+        }
+
+        for await (const delta of chatReplyStream(windowMessages, selectedFiles, systemPrompt, {
+          recapBlock,
+          onReadDocument: (name) => grounded.add(name),
+        })) {
           aiMsg.content += delta;
           dirty = true;
           broadcast(id, "message_token", { id: aiMsg.id, delta });
@@ -164,6 +225,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
           } catch (err) {
             console.error("final flush failed:", err);
           }
+        }
+        // Persist + broadcast which files the AI read in full (grounding caption).
+        // Runs in finally so even a cut-off reply records what it opened.
+        if (grounded.size > 0) {
+          const files = [...grounded];
+          try {
+            await updateMessageGrounding(aiMsg.id, files);
+          } catch (err) {
+            console.error("persist grounding failed:", err);
+          }
+          broadcast(id, "message_grounding", { id: aiMsg.id, files });
         }
       }
     })();

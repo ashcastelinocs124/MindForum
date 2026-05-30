@@ -235,3 +235,15 @@ ALTER TABLE room_files
 
 INSERT INTO schema_migrations (version) VALUES (11)
   ON CONFLICT (version) DO NOTHING;
+
+-- v12: per-document summaries + grounding attribution on AI replies.
+-- summary: short LLM summary used in the @ai prompt instead of full text.
+--   NULL = not summarized yet (drives lazy backfill + truncated fallback).
+-- grounding_files: names of files the AI read in full during a reply
+--   (NULL/[] = answered from summaries only). Stored OUTSIDE content so it
+--   never re-feeds into the model or leaks into the project brief.
+ALTER TABLE room_files ADD COLUMN IF NOT EXISTS summary         TEXT;
+ALTER TABLE messages   ADD COLUMN IF NOT EXISTS grounding_files JSONB;
+
+INSERT INTO schema_migrations (version) VALUES (12)
+  ON CONFLICT (version) DO NOTHING;
