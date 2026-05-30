@@ -65,8 +65,8 @@ function roomGuidanceBlock(systemPrompt: string): string {
   return `\n\nRoom-specific guidance from the organizer (follow it unless it conflicts with these instructions):\n${trimmed}`;
 }
 
-function chatSystemPrompt(files: DocLike[], systemPrompt: string): string {
-  return `You are an AI collaborator in a MindForum room — a shared workspace where a small group brainstorms together in one chat thread. Participants can upload documents that are shared with the group. You only respond when someone addresses you with \`@ai\`; otherwise you stay silent. In the history, each participant's message is prefixed with their name (e.g., "Alice: ..."); your reply is visible to everyone. Keep replies concise. Reference shared files when relevant. Stay grounded in what people have actually said and in the files; don't invent context.${roomGuidanceBlock(systemPrompt)}${summaryBlock(files)}`;
+function chatSystemPrompt(files: DocLike[], systemPrompt: string, recapBlock = ""): string {
+  return `You are an AI collaborator in a MindForum room — a shared workspace where a small group brainstorms together in one chat thread. Participants can upload documents that are shared with the group. You only respond when someone addresses you with \`@ai\`; otherwise you stay silent. In the history, each participant's message is prefixed with their name (e.g., "Alice: ..."); your reply is visible to everyone. Keep replies concise. Reference shared files when relevant. Stay grounded in what people have actually said and in the files; don't invent context.${roomGuidanceBlock(systemPrompt)}${recapBlock}${summaryBlock(files)}`;
 }
 
 export async function chatReply(
@@ -108,6 +108,8 @@ export type ChatReplyOpts = {
   openai?: OpenAI;
   /** Called once per distinct file the model reads in full. */
   onReadDocument?: (name: string) => void;
+  /** Pre-rendered recap of earlier messages (recap mode); "" / undefined = none. */
+  recapBlock?: string;
 };
 
 export async function* chatReplyStream(
@@ -120,7 +122,7 @@ export async function* chatReplyStream(
   const docs = toDocs(files);
 
   const convo: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: chatSystemPrompt(docs, systemPrompt) },
+    { role: "system", content: chatSystemPrompt(docs, systemPrompt, opts.recapBlock ?? "") },
     ...historyBlock(messages),
   ];
 
