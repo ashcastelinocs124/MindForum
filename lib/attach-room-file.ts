@@ -4,6 +4,7 @@ import { query } from "./db";
 import { broadcast } from "./sse";
 import { addFile, type Participant, type RoomFile } from "./store";
 import { publicRoomFile, type SourceMeta, type SourceType } from "./context-sources";
+import { summarizeDocument } from "./openai";
 
 export type AttachRoomFileInput = {
   roomId: string;
@@ -18,6 +19,16 @@ export type AttachRoomFileInput = {
 };
 
 export async function attachRoomFile(input: AttachRoomFileInput) {
+  // Summarize synchronously at ingest so the summary is present before any @ai
+  // can use it. A failure must never block the attach — fall back to null
+  // (the chat path lazily backfills + uses truncated full text until then).
+  let summary: string | null = null;
+  try {
+    summary = (await summarizeDocument(input.name, input.extractedText)) || null;
+  } catch (err) {
+    console.error("summarizeDocument failed (attaching without summary):", err);
+  }
+
   const file: RoomFile = {
     id: nanoid(10),
     roomId: input.roomId,
@@ -31,7 +42,7 @@ export async function attachRoomFile(input: AttachRoomFileInput) {
     sourceType: input.sourceType,
     sourceUrl: input.sourceUrl,
     sourceMeta: input.sourceMeta,
-    summary: null, // replaced with a generated summary in Task 5
+    summary,
   };
 
   await addFile(file);
