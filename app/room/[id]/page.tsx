@@ -50,6 +50,7 @@ type Msg = {
   kind?: "chat" | "brief";
   reactions?: Reaction[];
   editedAt?: number | null;
+  groundingFiles?: string[] | null;
 };
 type PollOptionView = { id: string; pollId: string; position: number; text: string };
 type OpenPoll = {
@@ -349,6 +350,22 @@ export default function RoomPage(props: { params: Promise<{ id: string }> }) {
               ...s,
               messages: s.messages.map((m) =>
                 m.id === mid ? { ...m, content: m.content + delta } : m
+              ),
+            }
+          : s
+      );
+    });
+    es.addEventListener("message_grounding", (ev) => {
+      const { id: mid, files } = JSON.parse((ev as MessageEvent).data) as {
+        id: string;
+        files: string[];
+      };
+      setState((s) =>
+        s
+          ? {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.id === mid ? { ...m, groundingFiles: files } : m
               ),
             }
           : s
@@ -2051,6 +2068,19 @@ function MsgView({
           ) : isAi ? (
             <span style={{ color: "var(--muted)", fontStyle: "italic" }}>thinking…</span>
           ) : null}
+        </div>
+      )}
+
+      {!editing && isAi && m.groundingFiles && m.groundingFiles.length > 0 && (
+        <div
+          style={{
+            marginTop: 4,
+            fontSize: 11,
+            fontStyle: "italic",
+            color: "var(--muted)",
+          }}
+        >
+          Checked the full text of {m.groundingFiles.join(", ")}.
         </div>
       )}
 
