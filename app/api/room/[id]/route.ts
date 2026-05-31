@@ -11,12 +11,11 @@ import { hardDeleteRoom } from "@/lib/store";
 import { logAudit } from "@/lib/audit";
 import { query } from "@/lib/db";
 import { broadcast } from "@/lib/sse";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 
 export const runtime = "nodejs";
 
 const MAX_NAME_CHARS = 100;
-// Mirrors POST /api/room — see that handler for the reasoning behind the bump.
-const MAX_SYSTEM_PROMPT_CHARS = 51_200;
 
 /**
  * PATCH: owner / super-admin update name and/or systemPrompt. Either field
@@ -52,9 +51,27 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const nextName = wantsName
       ? (body.name as string).trim().slice(0, MAX_NAME_CHARS) || cur.name
       : cur.name;
-    const nextPrompt = wantsPrompt
-      ? (body.systemPrompt as string).trim().slice(0, MAX_SYSTEM_PROMPT_CHARS)
+    const trimmedPrompt = wantsPrompt
+      ? (body.systemPrompt as string).trim()
       : cur.system_prompt;
+    // Enforce the cap only when the prompt actually changes, so rooms created
+    // under the old 51,200 limit can still take name-only edits (the editor
+    // re-sends the unchanged long prompt) without being rejected.
+    if (
+      wantsPrompt &&
+      trimmedPrompt !== cur.system_prompt &&
+      trimmedPrompt.length > MAX_SYSTEM_PROMPT_CHARS
+    ) {
+      return NextResponse.json(
+        {
+          error: "system_prompt_too_long",
+          max: MAX_SYSTEM_PROMPT_CHARS,
+          got: trimmedPrompt.length,
+        },
+        { status: 400 }
+      );
+    }
+    const nextPrompt = trimmedPrompt;
 
     const nameChanged = nextName !== cur.name;
     const promptChanged = nextPrompt !== cur.system_prompt;

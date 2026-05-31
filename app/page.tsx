@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 
 const ADMIN_TOKEN_KEY = "mindforum_admin_token";
 
@@ -12,6 +13,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [adminToken, setAdminToken] = useState<string | null>(null);
+  const promptTooLong = systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS;
 
   // Pick up ?token=... on mount, cache in localStorage, strip from URL.
   useEffect(() => {
@@ -89,31 +91,41 @@ export default function Home() {
           <div>
             <label
               style={{
-                display: "block",
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 8,
                 fontSize: 13,
                 color: "var(--muted)",
                 marginBottom: 4,
               }}
             >
-              AI guidance (optional) — how should the AI behave in this room?
+              <span>AI guidance (optional) — how should the AI behave in this room?</span>
+              <span style={{ color: promptTooLong ? "#c00" : "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+                {systemPrompt.length.toLocaleString()} / {MAX_SYSTEM_PROMPT_CHARS.toLocaleString()}
+              </span>
             </label>
             <textarea
               value={systemPrompt}
               onChange={(e) => setSystemPrompt(e.target.value)}
               placeholder="e.g., You are helping four faculty shape a grant proposal. Ask probing questions before suggesting answers. Prefer plain language over jargon."
               rows={4}
-              maxLength={4000}
               style={{
                 ...input(),
                 width: "100%",
                 display: "block",
                 resize: "vertical",
                 fontFamily: "inherit",
+                borderColor: promptTooLong ? "#c00" : undefined,
               }}
             />
+            {promptTooLong && (
+              <p style={{ color: "#c00", fontSize: 12, margin: "4px 0 0" }}>
+                System prompt is {(systemPrompt.length - MAX_SYSTEM_PROMPT_CHARS).toLocaleString()} characters over the {MAX_SYSTEM_PROMPT_CHARS.toLocaleString()}-char limit. Keep it lean — put reference material in uploaded room files instead.
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button type="submit" disabled={loading} style={btnPrimary()}>
+            <button type="submit" disabled={loading || promptTooLong} style={btnPrimary()}>
               {loading ? "Creating…" : "Create"}
             </button>
           </div>

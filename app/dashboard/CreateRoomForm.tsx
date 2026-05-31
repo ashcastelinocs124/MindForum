@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 
 const SLUG_RE = /^[a-z0-9-]{3,40}$/;
 
@@ -12,6 +13,7 @@ export default function CreateRoomForm() {
   const [error, setError] = useState<string | null>(null);
 
   const slugValid = SLUG_RE.test(slug);
+  const promptTooLong = systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +24,12 @@ export default function CreateRoomForm() {
     }
     if (!name.trim()) {
       setError("Name is required.");
+      return;
+    }
+    if (promptTooLong) {
+      setError(
+        `System prompt is ${(systemPrompt.length - MAX_SYSTEM_PROMPT_CHARS).toLocaleString()} characters over the ${MAX_SYSTEM_PROMPT_CHARS.toLocaleString()}-char limit.`
+      );
       return;
     }
     setBusy(true);
@@ -107,9 +115,21 @@ export default function CreateRoomForm() {
       </label>
 
       <label style={{ display: "grid", gap: 4 }}>
-        <span style={{ fontSize: 13, color: "#374151" }}>
-          System prompt{" "}
-          <span style={{ color: "#888" }}>(optional, ≤50 KB)</span>
+        <span
+          style={{
+            fontSize: 13,
+            color: "#374151",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <span>
+            System prompt <span style={{ color: "#888" }}>(optional)</span>
+          </span>
+          <span style={{ color: promptTooLong ? "#c00" : "#888", fontVariantNumeric: "tabular-nums" }}>
+            {systemPrompt.length.toLocaleString()} / {MAX_SYSTEM_PROMPT_CHARS.toLocaleString()}
+          </span>
         </span>
         <textarea
           value={systemPrompt}
@@ -120,7 +140,7 @@ export default function CreateRoomForm() {
             padding: 8,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
             fontSize: 13,
-            border: "1px solid #d1d5db",
+            border: `1px solid ${promptTooLong ? "#c00" : "#d1d5db"}`,
             borderRadius: 6,
             resize: "vertical",
           }}
@@ -135,7 +155,7 @@ export default function CreateRoomForm() {
 
       <button
         type="submit"
-        disabled={busy || !slugValid || !name.trim()}
+        disabled={busy || !slugValid || !name.trim() || promptTooLong}
         style={{
           padding: "10px 20px",
           fontSize: 14,

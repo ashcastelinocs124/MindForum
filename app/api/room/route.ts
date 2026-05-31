@@ -4,14 +4,11 @@ import { createRoom, createRoomBySlug } from "@/lib/store";
 import { checkRate, clientIp, rateLimited } from "@/lib/ratelimit";
 import { getCreator, httpErrorResponse } from "@/lib/creator-auth";
 import { logAudit } from "@/lib/audit";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 import { nanoid } from "nanoid";
 
 export const runtime = "nodejs";
 
-// Bumped from 4000 → 51200 per the v1 creator-rooms spec (50 KB cap; existing
-// seeded prompts are well under 10 KB, so this leaves room for richer
-// facilitator scripts without enabling abuse).
-const MAX_SYSTEM_PROMPT_CHARS = 51_200;
 const MAX_NAME_CHARS = 100;
 const SLUG_RE = /^[a-z0-9-]{3,40}$/;
 
@@ -60,9 +57,17 @@ export async function POST(req: NextRequest) {
       ? body.name.trim().slice(0, MAX_NAME_CHARS)
       : "Untitled Room";
   const systemPrompt =
-    typeof body.systemPrompt === "string"
-      ? body.systemPrompt.trim().slice(0, MAX_SYSTEM_PROMPT_CHARS)
-      : "";
+    typeof body.systemPrompt === "string" ? body.systemPrompt.trim() : "";
+  if (systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS) {
+    return NextResponse.json(
+      {
+        error: "system_prompt_too_long",
+        max: MAX_SYSTEM_PROMPT_CHARS,
+        got: systemPrompt.length,
+      },
+      { status: 400 }
+    );
+  }
 
   // Legacy / admin path: header valid (or admin disabled). Auto-generate slug.
   if (isAdminHeader || !adminToken) {

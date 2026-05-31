@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { adminAddFile, adminUpsertRoom, type RoomFile } from "@/lib/store";
 import { parseFile } from "@/lib/parse";
 import { query } from "@/lib/db";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 
 export const runtime = "nodejs";
 
@@ -64,11 +65,23 @@ export async function POST(req: NextRequest) {
   const replaceMode: "metadata" | "full" =
     body.replaceMode === "full" ? "full" : "metadata";
 
+  const systemPrompt = (body.systemPrompt ?? "").trim();
+  if (systemPrompt.length > MAX_SYSTEM_PROMPT_CHARS) {
+    return NextResponse.json(
+      {
+        error: "system_prompt_too_long",
+        max: MAX_SYSTEM_PROMPT_CHARS,
+        got: systemPrompt.length,
+      },
+      { status: 400 }
+    );
+  }
+
   try {
     await adminUpsertRoom({
       id: body.id,
       name: body.name.slice(0, 100),
-      systemPrompt: (body.systemPrompt ?? "").slice(0, 4000),
+      systemPrompt,
       replaceMode,
     });
   } catch (err) {

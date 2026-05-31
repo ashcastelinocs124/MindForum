@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 
 const MAX_NAME = 100;
-const MAX_PROMPT = 51_200;
+const MAX_PROMPT = MAX_SYSTEM_PROMPT_CHARS;
 
 export default function GeneralEditor({
   roomId,
@@ -22,6 +23,11 @@ export default function GeneralEditor({
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const dirty = name !== initialName || systemPrompt !== initialSystemPrompt;
+  // Only block on the cap when the prompt was actually edited — a room created
+  // under the old 51,200 limit must still allow name-only edits without forcing
+  // the owner to delete existing prompt text first.
+  const promptTooLong =
+    systemPrompt.length > MAX_PROMPT && systemPrompt !== initialSystemPrompt;
 
   async function save() {
     setBusy(true);
@@ -72,26 +78,29 @@ export default function GeneralEditor({
       <label style={{ display: "grid", gap: 4 }}>
         <span style={{ fontSize: 13, color: "#374151" }}>
           System prompt{" "}
-          <span style={{ color: "#888" }}>
+          <span style={{ color: promptTooLong ? "#c00" : "#888" }}>
             ({systemPrompt.length.toLocaleString()} / {MAX_PROMPT.toLocaleString()} chars)
           </span>
         </span>
         <textarea
           value={systemPrompt}
-          onChange={(e) =>
-            setSystemPrompt(e.target.value.slice(0, MAX_PROMPT))
-          }
+          onChange={(e) => setSystemPrompt(e.target.value)}
           rows={10}
           disabled={busy || archived}
           style={{
             padding: 8,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
             fontSize: 13,
-            border: "1px solid #d1d5db",
+            border: `1px solid ${promptTooLong ? "#c00" : "#d1d5db"}`,
             borderRadius: 6,
             resize: "vertical",
           }}
         />
+        {promptTooLong && (
+          <span style={{ fontSize: 12, color: "#c00" }}>
+            {(systemPrompt.length - MAX_PROMPT).toLocaleString()} characters over the limit — trim before saving. Put reference material in uploaded room files instead.
+          </span>
+        )}
       </label>
 
       {msg && (
@@ -111,11 +120,11 @@ export default function GeneralEditor({
         <button
           type="button"
           onClick={save}
-          disabled={busy || !dirty || archived}
+          disabled={busy || !dirty || archived || promptTooLong}
           style={{
             padding: "8px 16px",
             fontSize: 14,
-            background: busy || !dirty || archived ? "#9ca3af" : "#1f2937",
+            background: busy || !dirty || archived || promptTooLong ? "#9ca3af" : "#1f2937",
             color: "white",
             border: "none",
             borderRadius: 6,

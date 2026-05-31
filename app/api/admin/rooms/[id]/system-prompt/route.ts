@@ -3,10 +3,11 @@ import { isAdmin } from "@/lib/admin-auth";
 import { setSystemPrompt, roomExists } from "@/lib/store";
 import { query } from "@/lib/db";
 import { broadcast } from "@/lib/sse";
+import { MAX_SYSTEM_PROMPT_CHARS } from "@/lib/limits";
 
 export const runtime = "nodejs";
 
-const MAX = 4000;
+const MAX = MAX_SYSTEM_PROMPT_CHARS;
 
 /** Return the current system prompt for the SystemPromptModal to pre-fill. */
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
