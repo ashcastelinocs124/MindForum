@@ -119,9 +119,9 @@ Then provision TLS:
 sudo certbot --nginx -d mindforum.example.com
 ```
 
-### Restart = lost state
+### Persistence
 
-This is intentional for an MVP. Participants, messages, and uploaded files all live in one Node process. If you restart the service, active rooms are gone. Upgrade path to SQLite/Postgres is sketched in `docs/plans/2026-04-20-seminar-room-design.md`.
+Rooms, participants, messages, and uploaded files are persisted in Postgres (role/db `mindforum`), so chat history survives restarts. AI replies stream to Postgres roughly every second during generation plus a final flush, so a mid-stream crash loses only the unflushed tail. The only state that is *not* persisted is the in-memory per-IP rate limiter (see below), which resets on restart by design.
 
 ## Abuse notes
 
