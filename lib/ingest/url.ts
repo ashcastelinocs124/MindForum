@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 import { Readability } from "@mozilla/readability";
 import OpenAI from "openai";
 import type { UrlSourceMeta } from "../context-sources";
+import { openAIClient } from "../openai-client";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require("jsdom") as {
@@ -314,7 +315,7 @@ async function extractWithOpenAI(args: {
   text: string;
   sourceUrl: string;
 }): Promise<ModelExtractorResult> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const client = openAIClient();
   const userMessage = `Instruction: ${args.instruction}\n\nSource page: ${args.sourceUrl}\n\nPage text:\n---\n${args.text.slice(0, MAX_CONTEXT_CHARS)}\n---`;
 
   const response = await client.responses.create({

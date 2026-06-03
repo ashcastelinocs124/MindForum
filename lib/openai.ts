@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { Message, PinnedFacts, RoomFile } from "./store";
 import { summaryBlock, resolveDocumentRead, MAX_FILE_CHARS, type DocLike } from "./doc-context";
+import { openAIClient } from "./openai-client";
 
 const MODEL_CHAT = process.env.OPENAI_MODEL || "gpt-5.4";
 const MODEL_BRIEF = process.env.OPENAI_MODEL_BRIEF || MODEL_CHAT;
@@ -16,8 +17,7 @@ function toDocs(files: RoomFile[]): DocLike[] {
 }
 
 function client(): OpenAI {
-  // Instantiated per-call so missing env vars fail at request time, not build time.
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  return openAIClient();
 }
 
 function fileBlock(files: RoomFile[]): string {
