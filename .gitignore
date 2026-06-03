@@ -5,4 +5,6 @@ node_modules
 /tmp-uploads
 tsconfig.tsbuildinfo
 /rooms/
+azure-package/
+*.dump
 .DS_Store
