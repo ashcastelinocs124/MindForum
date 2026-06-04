@@ -9,3 +9,4 @@ tsconfig.tsbuildinfo
 azure-package/
 *.dump
 .DS_Store
+update.md
