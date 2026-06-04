@@ -2,9 +2,8 @@ import OpenAI from "openai";
 import type { Message, PinnedFacts, RoomFile } from "./store";
 import { summaryBlock, resolveDocumentRead, MAX_FILE_CHARS, type DocLike } from "./doc-context";
 import { openAIClient } from "./openai-client";
+import { modelForTask } from "./model-routing";
 
-const MODEL_CHAT = process.env.OPENAI_MODEL || "gpt-5.4";
-const MODEL_BRIEF = process.env.OPENAI_MODEL_BRIEF || MODEL_CHAT;
 const MAX_HISTORY = 30;
 
 /** Project the store's RoomFile onto the pure DocLike shape the prompt uses. */
@@ -38,7 +37,7 @@ const SUMMARY_MAX_INPUT_CHARS = MAX_FILE_CHARS;
 export async function summarizeDocument(name: string, extractedText: string): Promise<string> {
   const text = extractedText.slice(0, SUMMARY_MAX_INPUT_CHARS);
   const res = await client().chat.completions.create({
-    model: MODEL_BRIEF,
+    model: modelForTask("document-summary"),
     messages: [
       {
         role: "system",
@@ -75,7 +74,10 @@ export async function chatReply(
   systemPrompt = ""
 ): Promise<string> {
   const res = await client().chat.completions.create({
-    model: MODEL_CHAT,
+    model: modelForTask("chat-reply", {
+      messageCount: messages.length,
+      selectedFileCount: files.length,
+    }),
     messages: [
       { role: "system", content: chatSystemPrompt(toDocs(files), systemPrompt) },
       ...historyBlock(messages),
@@ -129,7 +131,11 @@ export async function* chatReplyStream(
   for (let round = 0; round <= MAX_DOC_READS; round++) {
     const forceAnswer = round === MAX_DOC_READS; // out of escalations → forbid the tool
     const stream = await oa.chat.completions.create({
-      model: MODEL_CHAT,
+      model: modelForTask("chat-reply", {
+        messageCount: messages.length,
+        selectedFileCount: files.length,
+        recapBlock: opts.recapBlock,
+      }),
       stream: true,
       messages: convo,
       tools: [READ_DOCUMENT_TOOL],
@@ -211,7 +217,7 @@ export async function generateBrief(
 
   const system = `You turn a MindForum conversation, shared files, and any closed polls into a structured project brief. Be specific, not generic. Every item should be grounded in the conversation, the files, or the polls. If a section has no grounding, return an empty array for it rather than inventing content.${roomGuidanceBlock(systemPrompt)}${fileBlock(files)}${pollBlock}`;
   const res = await client().chat.completions.create({
-    model: MODEL_BRIEF,
+    model: modelForTask("brief"),
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -291,7 +297,7 @@ export async function draftPollFromHistory(
 ): Promise<PollDraft> {
   const system = `${POLL_DRAFT_SYSTEM}${roomGuidanceBlock(systemPrompt)}`;
   const res = await client().chat.completions.create({
-    model: MODEL_BRIEF,
+    model: modelForTask("poll-draft", { messageCount: recentMessages.length }),
     response_format: {
       type: "json_schema",
       json_schema: {
@@ -394,7 +400,7 @@ ${formatMsgsForPrompt(args.deltaMessages)}
 Produce the updated rolling summary as JSON.`;
 
   const res = await client().chat.completions.create({
-    model: MODEL_CHAT,
+    model: modelForTask("rolling-summary"),
     response_format: {
       type: "json_schema",
       json_schema: {

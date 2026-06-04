@@ -2,9 +2,9 @@ import { lookup } from "node:dns/promises";
 import { createRequire } from "node:module";
 import { isIP } from "node:net";
 import { Readability } from "@mozilla/readability";
-import OpenAI from "openai";
 import type { UrlSourceMeta } from "../context-sources";
 import { openAIClient } from "../openai-client";
+import { modelForTask } from "../model-routing";
 
 const require = createRequire(import.meta.url);
 const { JSDOM } = require("jsdom") as {
@@ -35,7 +35,6 @@ const { Agent } = require("undici") as {
   }) => { close: () => Promise<void> };
 };
 
-const MODEL_EXTRACT = process.env.OPENAI_MODEL_EXTRACT || "gpt-5.4-mini";
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 3;
 const MAX_CONTEXT_CHARS = 200_000;
@@ -62,7 +61,7 @@ Rules:
 
 type ResolvedAddress = { address: string; family?: number };
 type ResolveImpl = (hostname: string, options: { all: true }) => Promise<ResolvedAddress[]>;
-export type ModelExtractorResult = { text: string; webSearchCallCount: number };
+export type ModelExtractorResult = { text: string; webSearchCallCount: number; model?: string };
 type ModelExtractor = (args: {
   instruction: string;
   text: string;
@@ -166,7 +165,7 @@ export async function ingestUrl(input: UrlIngestInput): Promise<UrlIngestResult>
       originalLength: fetched.originalLength,
       readableLength: readableText.length,
       extractedLength: extractedText.length,
-      model: MODEL_EXTRACT,
+      model: modelResult.model ?? modelForTask("url-extract"),
       webSearchCallCount: modelResult.webSearchCallCount,
     },
   };
@@ -318,8 +317,9 @@ async function extractWithOpenAI(args: {
   const client = openAIClient();
   const userMessage = `Instruction: ${args.instruction}\n\nSource page: ${args.sourceUrl}\n\nPage text:\n---\n${args.text.slice(0, MAX_CONTEXT_CHARS)}\n---`;
 
+  const model = modelForTask("url-extract");
   const response = await client.responses.create({
-    model: MODEL_EXTRACT,
+    model,
     instructions: URL_EXTRACT_SYSTEM_PROMPT,
     input: [{ role: "user", content: userMessage }],
     tools: [{ type: "web_search_preview", search_context_size: "medium" }],
@@ -335,6 +335,7 @@ async function extractWithOpenAI(args: {
   return {
     text: (response.output_text ?? "").trim(),
     webSearchCallCount,
+    model,
   };
 }
 
